@@ -70,7 +70,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     try {
       if (typeof window.getClientesRetail !== "function") {
-        throw new Error("No existe window.getClientesRetail. Verifique JS/api.js.");
+        throw new Error("No existe window.getClientesRetail. Verifique js/api.js.");
       }
 
       const clientes = await window.getClientesRetail();

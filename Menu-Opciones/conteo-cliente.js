@@ -166,7 +166,7 @@ registros.forEach((r) => {
 
     try {
       if (typeof window.guardarConteoAuditor !== "function") {
-        throw new Error("No existe la función guardarConteoAuditor en JS/api.js.");
+        throw new Error("No existe la función guardarConteoAuditor en js/api.js.");
       }
 
       const resultado = await window.guardarConteoAuditor({
@@ -181,7 +181,7 @@ if (finalizar) {
         actualizarLoading("Marcando lote como finalizado...");
 
         if (typeof window.finalizarConteoAuditor !== "function") {
-          throw new Error("No existe la función finalizarConteoAuditor en JS/api.js.");
+          throw new Error("No existe la función finalizarConteoAuditor en js/api.js.");
         }
 
         await window.finalizarConteoAuditor({

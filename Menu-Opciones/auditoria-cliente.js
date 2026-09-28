@@ -324,7 +324,7 @@ btnForzarN1.addEventListener("click", async () => {
       actualizarLoading("Eliminando QUERY anterior...");
 
       if (typeof window.limpiarQueryCliente !== "function") {
-        throw new Error("No existe la función limpiarQueryCliente en JS/api.js.");
+        throw new Error("No existe la función limpiarQueryCliente en js/api.js.");
       }
 
       await window.limpiarQueryCliente(cliente.id);
