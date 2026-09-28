@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clientes Retail | Auditoria Retail</title>
+
+  <link rel="stylesheet" href="../PART/cabecera.css">
+  <link rel="stylesheet" href="../PART/footer.css">
+  <link rel="stylesheet" href="./clientes-retail.css">
+
+  <link rel="icon" type="image/png" href="../IMG/logo.png">
+  
+  <style>
+    /* Aseguramos que la clase oculto funcione si no está en el CSS */
+    .oculto { display: none !important; }
+  </style>
+</head>
+
+<body>
+  <div id="contenedor-cabecera"></div>
+
+  <main class="clientes-main">
+    
+    <!-- SECCIÓN MODIFICADA: Ahora usa Flexbox para alinear el botón a la derecha -->
+    <section class="clientes-hero" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+      <div>
+        <span class="clientes-pill">Auditoria Retail</span>
+        <h1 style="margin-top: 10px;">Clientes Retail</h1>
+        <p>Seleccione el cliente que desea procesar.</p>
+      </div>
+      
+      <!-- NUEVO BOTÓN DATA MAESTRA (Oculto por defecto) -->
+      <button id="btnDataMaestra" class="oculto" style="background: linear-gradient(135deg, #0f172a 0%, #334155 100%); color: white; border: none; padding: 14px 24px; border-radius: 12px; font-weight: 900; font-size: 15px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 8px; transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+        🗄️ Data Maestra
+      </button>
+    </section>
+
+    <!-- ¡ESTE ES EL CONTENEDOR VITAL QUE FALTABA PARA QUE FUNCIONE EL JS! -->
+    <section id="clientesGrid" class="clientes-grid"></section>
+
+  </main>
+<!-- MODAL BIFURCACIÓN SODIMAC -->
+  <div id="modalSodimac" class="app-modal oculto">
+    <div class="app-modal-box" style="padding: 40px 30px;">
+      <div style="margin-bottom: 20px;">
+        <img src="../IMG/logo.png" id="imgModalSodimac" alt="Sodimac" style="width: 140px; height: auto; object-fit: contain;">
+      </div>
+      <h3 style="margin-bottom: 10px; font-size: 22px;">Seleccione el flujo</h3>
+      <p style="color: #64748b; margin-bottom: 28px; font-size: 14px;">Este cliente tiene dos modalidades de auditoría. ¿Cuál desea procesar hoy?</p>
+      
+      <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+        <button id="btnSodimacRegular" style="background: #eaf4ff; color: #0f4c81; border: none; padding: 12px 20px; border-radius: 12px; font-weight: 800; cursor: pointer; transition: 0.2s;">Regular</button>
+        <button id="btnSodimacPre" style="background: #0f4c81; color: #ffffff; border: none; padding: 12px 20px; border-radius: 12px; font-weight: 800; cursor: pointer; transition: 0.2s;">Predistribuido</button>
+      </div>
+      
+      <button id="btnCerrarModalSodimac" style="margin-top: 20px; background: none; border: none; color: #94a3b8; text-decoration: underline; cursor: pointer; font-size: 13px;">Cancelar y volver</button>
+    </div>
+  </div>
+  <!-- MODAL DE CARGA CON LOGO SLS -->
+  <div id="loadingOverlay" class="loading-overlay oculto">
+    <div class="loading-card">
+      <div class="logo-loader-wrap">
+        <div class="loader-ring"></div>
+        <img src="../IMG/logo.png" alt="Logo">
+      </div>
+      <h3 id="loadingTitle">Cargando clientes...</h3>
+      <p id="loadingText">Consultando base de datos.</p>
+    </div>
+  </div>
+  
+  <!-- Scripts con v=4 para evitar caché -->
+  <script src="../JS/api.js?v=4"></script>
+  <script src="../JS/auth.js"></script>
+  <script src="../PART/cabecera.js"></script>
+  <script src="../PART/footer.js"></script>
+  <script src="./clientes-retail.js?v=4"></script>
+</body>
+</html>

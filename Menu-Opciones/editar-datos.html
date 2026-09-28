@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Editar Datos | Auditoria Retail</title>
+  <link rel="stylesheet" href="../PART/cabecera.css">
+  <link rel="stylesheet" href="../PART/footer.css">
+  <link rel="stylesheet" href="./editar-datos.css">
+  <link rel="icon" type="image/png" href="../IMG/logo.png">
+</head>
+<body>
+  <div id="contenedor-cabecera"></div>
+
+  <main class="split-main">
+<div class="split-header">
+      <div class="header-logo-box">
+        <img id="clienteLogoSplit" src="../IMG/logo.png" alt="Cliente">
+        <div>
+          <h1 style="display:none;" id="clienteNombreSplit">Cliente</h1> <!-- Oculto por si acaso -->
+          <p>Edite los valores del Query o Conteo y guarde los cambios antes de procesar.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="split-container">
+      <!-- PANEL IZQUIERDO: QUERY -->
+      <div class="panel-box">
+        <div class="panel-head query-head">
+          <h3>DATOS QUERY</h3>
+          <div class="panel-actions">
+            <input type="text" id="buscarQuery" placeholder="🔍 Buscar SKU o Desc..." class="input-search">
+            <button id="btnGuardarQuery" class="btn btn-sm btn-query">💾 Guardar Cambios</button>
+          </div>
+        </div>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Fila</th>
+                <th>SKU</th>
+                <th>Descripción</th>
+                <th>UM</th>
+                <th>Cantidad</th>
+              </tr>
+            </thead>
+            <tbody id="bodyQuery">
+              <tr><td colspan="5">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PANEL DERECHO: CONTEO -->
+      <div class="panel-box">
+        <div class="panel-head conteo-head">
+          <h3>DATOS CONTEO</h3>
+          <div class="panel-actions">
+            <input type="text" id="buscarConteo" placeholder="🔍 Buscar EAN o Bulto..." class="input-search">
+            <button id="btnGuardarConteo" class="btn btn-sm btn-conteo">💾 Guardar Cambios</button>
+          </div>
+        </div>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Auditor</th>
+                <th>Tienda</th>
+                <th>Bulto (Pallet)</th>
+                <th>EAN</th>
+                <th>Cantidad</th>
+              </tr>
+            </thead>
+            <tbody id="bodyConteo">
+              <tr><td colspan="5">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+<!-- MODAL DE CARGA CON LOGO SLS -->
+  <div id="loadingOverlay" class="loading-overlay oculto">
+    <div class="loading-card">
+      <div class="logo-loader-wrap">
+        <div class="loader-ring"></div>
+        <img src="../IMG/logo.png" alt="SLS Logo">
+      </div>
+      <h3 id="loadingTitle">Procesando...</h3>
+      <p id="loadingText">Espere un momento.</p>
+</div>
+  </div>
+
+  <!-- MODAL DE MENSAJE (Éxito / Error) -->
+  <div id="appModal" class="app-modal oculto">
+    <div class="app-modal-box">
+      <div id="appModalIcon" class="app-modal-icon success">✓</div>
+      <h3 id="appModalTitle">Proceso terminado</h3>
+      <p id="appModalMessage">Operación realizada correctamente.</p>
+      <button type="button" id="appModalOk" class="btn btn-guardar">Aceptar</button>
+    </div>
+  </div>
+
+  <!-- MODAL CONFIRMACIÓN (Sí / No) -->
+  <div id="confirmModal" class="confirm-modal oculto">
+    <div class="confirm-modal-box">
+      <div class="confirm-logo-wrap">
+        <img src="../IMG/logo.png" alt="SLS Logo">
+      </div>
+      <h3 id="confirmModalTitle">Confirmar acción</h3>
+      <p id="confirmModalMessage">Mensaje de confirmación.</p>
+      <div class="confirm-actions">
+        <button type="button" id="confirmCancelBtn" class="btn btn-outline">Cancelar</button>
+        <button type="button" id="confirmAcceptBtn" class="btn btn-guardar">Sí, continuar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../JS/api.js"></script>
+  <script src="../JS/auth.js"></script>
+  <script src="../PART/cabecera.js"></script>
+  <script src="../PART/footer.js"></script>
+  <script src="./editar-datos.js"></script>
+</body>
+</html>

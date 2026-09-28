@@ -1,0 +1,154 @@
+body {
+  margin: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 18%),
+    linear-gradient(180deg, #f8fbff 0%, #eef3f8 100%);
+  color: #0f172a;
+}
+
+.clientes-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 34px 18px 80px;
+}
+
+.clientes-hero {
+  margin-bottom: 28px;
+}
+
+.clientes-pill {
+  display: inline-flex;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(15, 76, 129, 0.08);
+  color: #0f4c81;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.clientes-hero h1 {
+  margin: 12px 0 6px;
+  font-size: 32px;
+  font-weight: 900;
+}
+
+.clientes-hero p {
+  margin: 0;
+  color: #64748b;
+  font-size: 15px;
+}
+
+.clientes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 22px;
+}
+
+.cliente-card {
+  min-height: 220px;
+  padding: 20px;
+  border-radius: 22px;
+  background: #ffffff;
+  border: 1px solid #dbe5ef;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  cursor: pointer;
+  transition: 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.cliente-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 18px 34px rgba(15, 76, 129, 0.14);
+}
+
+.cliente-logo-box {
+  width: 150px;
+  height: 105px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.cliente-logo {
+  max-width: 150px;
+  max-height: 105px;
+  object-fit: contain;
+}
+
+.cliente-nombre {
+  font-size: 17px;
+  font-weight: 900;
+  text-align: center;
+  color: #0f172a;
+}
+
+.cliente-codigo {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.cliente-ingresar {
+  margin-top: 14px;
+  color: #0f4c81;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.estado-error {
+  padding: 16px;
+  border-radius: 14px;
+  background: #fff1f2;
+  color: #b91c1c;
+  border: 1px solid #fecdd3;
+  font-weight: 700;
+}
+/* --- MODAL LOADING OFICIAL SLS --- */
+.loading-overlay { position: fixed; inset: 0; z-index: 99999; background: rgba(15, 23, 42, 0.62); backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.loading-card { width: 100%; max-width: 360px; background: #ffffff; border-radius: 26px; padding: 30px 26px; text-align: center; box-shadow: 0 28px 80px rgba(15, 23, 42, 0.32); }
+.logo-loader-wrap { width: 150px; height: 150px; margin: 0 auto 18px; position: relative; display: flex; align-items: center; justify-content: center; }
+.logo-loader-wrap img { width: 105px; height: 105px; object-fit: contain; border-radius: 50%; z-index: 2; }
+.loader-ring { position: absolute; width: 142px; height: 142px; border-radius: 50%; border: 6px solid #dbeafe; border-top-color: #0f4c81; border-right-color: #f8b400; animation: spinLoader 0.9s linear infinite; }
+@keyframes spinLoader { to { transform: rotate(360deg); } }
+.loading-card h3 { margin: 0 0 8px; font-size: 22px; font-weight: 900; color: #0f172a; }
+.loading-card p { margin: 0; font-size: 14px; color: #64748b; }
+.oculto { display: none !important; }
+
+/* --- ESTILOS PARA MODAL BIFURCACIÓN SODIMAC --- */
+.app-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  background: rgba(15, 23, 42, 0.62);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.app-modal-box {
+  width: 100%;
+  max-width: 400px;
+  background: #ffffff;
+  border-radius: 26px;
+  text-align: center;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.32);
+  animation: popIn 0.3s ease-out;
+}
+
+@keyframes popIn {
+  0% { opacity: 0; transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.oculto {
+  display: none !important;
+}

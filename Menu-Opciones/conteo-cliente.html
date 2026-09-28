@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Registro de Conteo | Auditoria Retail</title>
+
+  <link rel="stylesheet" href="../PART/cabecera.css">
+  <link rel="stylesheet" href="../PART/footer.css">
+  <link rel="stylesheet" href="./conteo-cliente.css">
+
+  <link rel="icon" type="image/png" href="../IMG/logo.png">
+</head>
+
+<body>
+  <div id="contenedor-cabecera"></div>
+
+  <main class="conteo-main">
+
+    <section class="conteo-panel-head">
+      <div class="cliente-box">
+        <img id="clienteLogo" src="../IMG/logo.png" alt="Cliente">
+        <div>
+          <span class="pill-modulo">Auditoria Retail</span>
+          <h1>Registro de CONTEO</h1>
+          <p id="subtituloConteo">Registre los códigos escaneados del cliente.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="conteo-actions">
+<button id="btnAgregar50Filas" class="btn btn-secundario">Agregar 50 filas</button>
+<button id="btnGuardarConteo" class="btn btn-principal">Guardar mi conteo</button>
+<button id="btnFinalizarConteo" class="btn btn-success">Finalizar conteo</button>
+
+    </section>
+
+    <section class="conteo-table-panel">
+      <div class="tabla-scroll">
+        <table class="conteo-table">
+<thead>
+            <tr>
+              <th>A Tienda</th>
+              <th>B Pallet</th>
+              <th>C EAN</th>
+              <th>D Cantidad</th>
+              <th style="width: 40px; text-align: center;">X</th> <!-- NUEVA CABECERA -->
+            </tr>
+          </thead>
+          <tbody id="conteoBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="loadingOverlay" class="loading-overlay oculto">
+    <div class="loading-card">
+      <div class="logo-loader-wrap">
+        <div class="loader-ring"></div>
+        <img src="../IMG/logo.png" alt="Logo">
+      </div>
+      <h3 id="loadingTitle">Procesando...</h3>
+      <p id="loadingText">Espere un momento.</p>
+    </div>
+  </div>
+
+  <div id="appModal" class="app-modal oculto">
+    <div class="app-modal-box">
+      <div id="appModalIcon" class="app-modal-icon success">✓</div>
+      <h3 id="appModalTitle">Proceso terminado</h3>
+      <p id="appModalMessage">Operación realizada correctamente.</p>
+      <button type="button" id="appModalOk">Aceptar</button>
+    </div>
+  </div>
+
+<!-- MODAL CONFIRMACIÓN (Sí / No) -->
+  <div id="confirmModal" class="confirm-modal oculto">
+    <div class="confirm-modal-box">
+      <div class="confirm-logo-wrap">
+        <img src="../IMG/logo.png" alt="SLS Logo">
+      </div>
+      <h3 id="confirmModalTitle">Confirmar acción</h3>
+      <p id="confirmModalMessage">Mensaje de confirmación.</p>
+      <div class="confirm-actions">
+        <button type="button" id="confirmCancelBtn" class="btn btn-outline">Cancelar</button>
+        <button type="button" id="confirmAcceptBtn" class="btn btn-guardar">Sí, continuar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../JS/api.js"></script>
+  <script src="../JS/auth.js"></script>
+  <script src="../PART/cabecera.js"></script>
+  <script src="../PART/footer.js"></script>
+  <script src="./conteo-cliente.js"></script>
+</body>
+</html>

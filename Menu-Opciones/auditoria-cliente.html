@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auditoria Retail | Cliente</title>
+
+  <link rel="stylesheet" href="../PART/cabecera.css">
+  <link rel="stylesheet" href="../PART/footer.css">
+  <link rel="stylesheet" href="./auditoria-cliente.css">
+
+  <link rel="icon" type="image/png" href="../IMG/logo.png">
+</head>
+
+<body>
+  <div id="contenedor-cabecera"></div>
+
+  <main class="auditoria-main">
+
+<section class="cliente-panel" style="display: flex; justify-content: space-between; align-items: flex-start;">
+  <div class="cliente-info">
+    <img id="clienteLogo" src="../IMG/logo.png" alt="Cliente">
+    <div class="cliente-texto">
+      <span class="pill-modulo">Auditoria Retail</span>
+      <p class="estado-descripcion">Estado de carga, conteo y procesamiento.</p>
+    </div>
+  </div>
+
+  <!-- CAJA DE AUDITORÍA (Solo Superadmin) -->
+  <div id="auditTrailBox" class="audit-trail-box oculto">
+    <div class="audit-item"><span class="audit-label">Carga Query:</span> <span id="lblLogQuery" class="audit-value">Sin registros</span></div>
+    
+    <!-- Contenedor dinámico para los múltiples conteos -->
+    <div id="contenedorLogsConteos"></div>
+
+    <div class="audit-item"><span class="audit-label">Procesado:</span> <span id="lblLogProcesar" class="audit-value">Sin registros</span></div>
+    <div class="audit-item"><span class="audit-label">Descargado:</span> <span id="lblLogDescargar" class="audit-value">Sin registros</span></div>
+    <div class="audit-item"><span class="audit-label">Reiniciado:</span> <span id="lblLogReiniciar" class="audit-value">Sin registros</span></div>
+  </div>
+</section>
+
+
+
+    <section class="timeline-panel">
+      <div class="timeline-item" id="estadoQuery">
+        <div class="timeline-dot"></div>
+        <div>
+          <strong>QUERY CARGADO</strong>
+          <span id="textoQuery">Pendiente</span>
+        </div>
+      </div>
+
+      <div class="timeline-line"></div>
+
+<div class="timeline-item" id="estadoConteo">
+        <div class="timeline-dot"></div>
+        <div>
+          <strong>CONTEO</strong>
+          <!-- flex-direction: column hace que la burbuja baje debajo del texto -->
+          <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 5px; margin-top: 2px;">
+            <span id="textoConteo" style="margin-top: 0;">Pendiente</span>
+            <span id="timelineBadgeConteo" class="timeline-badge-red oculto" title="Auditores consolidados">0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="timeline-line"></div>
+
+      <div class="timeline-item" id="estadoProceso">
+        <div class="timeline-dot"></div>
+        <div>
+          <strong>PROCESAR</strong>
+          <span id="textoProceso">Bloqueado</span>
+        </div>
+      </div>
+    </section>
+
+<section class="acciones-panel">
+      <button id="btnCargarQuery" class="btn accion-admin">Cargar QUERY</button>
+      
+      <div class="accion-conteo-box">
+        <button id="btnRegistrarConteo" class="btn accion-auditor">Registrar CONTEO</button>
+      </div>
+      
+      <button id="btnProcesar" class="btn btn-procesar" disabled>Procesar</button>
+
+      <!-- NUEVOS BOTONES -->
+      <button id="btnDescargar" class="btn btn-descargar">Descargar</button>
+      <button id="btnReiniciar" class="btn btn-peligro">Reiniciar</button>
+      
+      <input type="file" id="inputQueryExcel" accept=".xlsx,.xls,.xlsm,.xlsb,.csv" hidden>
+    </section>
+
+    <section class="reporte-panel">
+<div class="reporte-head">
+        <h2>Reporte</h2>
+        
+<div class="reporte-kpis">
+          <div class="kpi-box kpi-blue">
+            <span class="kpi-lbl">PLAN</span>
+            <span class="kpi-val" id="kpiPlan">0 ITEMS</span>
+          </div>
+          <div class="kpi-box kpi-blue">
+            <span class="kpi-lbl">REAL</span>
+            <span class="kpi-val" id="kpiReal">0 ITEMS</span>
+          </div>
+          <div class="kpi-box" id="kpiEfectividadBox">
+            <span class="kpi-lbl">EFECTIVIDAD</span>
+            <span class="kpi-val" id="kpiEfectividad">0.00%</span>
+          </div>
+        </div>
+
+        <div>
+          <button id="btnIrEditarDatos" class="btn btn-secundario btn-sm">✏️ Editar Datos</button>
+          <button id="btnForzarN1" class="btn btn-warning btn-sm">Forzar a N1</button>
+        </div>
+      </div>
+
+      <div class="tabla-scroll">
+        <table>
+<thead>
+            <tr>
+              <th>N°</th>
+              <th></th>
+              <th>SKU</th>
+              <th>Descripción</th>
+              <th>UM</th>
+              <th>Cantidad</th>
+              <th>EAN13</th>
+              <th>Valor</th>
+              <th>Inner</th>
+              <th>Valor</th>
+              <th>EAN14</th>
+              <th>Valor</th>
+              <th>UM Min</th>
+              <th>Plan</th>
+              <th>Real</th>
+              <th>Ubicación</th>
+              <th>Diferencia</th>
+              <th>Comentario</th>
+              <th>Comentario 2</th>
+            </tr>
+          </thead>
+
+          <tbody id="reporteBody">
+            <tr>
+              <td colspan="19">Sin reporte procesado.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+<!-- MODAL DE CARGA -->
+<div id="loadingOverlay" class="loading-overlay oculto">
+  <div class="loading-card">
+    <div class="logo-loader-wrap">
+      <div class="loader-ring"></div>
+      <img src="../IMG/logo.png" alt="SLS Logo">
+    </div>
+
+    <h3 id="loadingTitle">Procesando...</h3>
+    <p id="loadingText">Espere un momento.</p>
+  </div>
+</div>
+
+<!-- MODAL DE MENSAJE -->
+<div id="appModal" class="app-modal oculto">
+  <div class="app-modal-box">
+    <div id="appModalIcon" class="app-modal-icon success">✓</div>
+    <h3 id="appModalTitle">Proceso terminado</h3>
+    <p id="appModalMessage">Operación realizada correctamente.</p>
+    <button type="button" id="appModalOk">Aceptar</button>
+  </div>
+</div>
+<!-- MODAL CONFIRMACIÓN -->
+<div id="confirmModal" class="confirm-modal oculto">
+  <div class="confirm-modal-box">
+    <div class="confirm-logo-wrap">
+      <img src="../IMG/logo.png" alt="SLS Logo">
+    </div>
+
+    <h3 id="confirmModalTitle">Confirmar acción</h3>
+    <p id="confirmModalMessage">Mensaje de confirmación.</p>
+
+    <div class="confirm-actions">
+      <button type="button" id="confirmCancelBtn" class="confirm-btn cancel">
+        Cancelar
+      </button>
+      <button type="button" id="confirmAcceptBtn" class="confirm-btn accept">
+        Sí, continuar
+      </button>
+    </div>
+  </div>
+</div>
+
+  <script src="../JS/api.js"></script>
+  <script src="../JS/auth.js"></script>
+  <script src="../PART/cabecera.js"></script>
+  <script src="../PART/footer.js"></script>
+
+  <!-- Librería local para leer Excel -->
+  <script src="../LIB/xlsx.full.min.js"></script>
+
+  <!-- Lógica de esta pantalla -->
+  <script src="./auditoria-cliente.js"></script>
+</body>
+</html>

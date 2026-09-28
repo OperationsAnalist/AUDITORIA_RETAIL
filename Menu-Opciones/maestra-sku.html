@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Data Maestra SKU | SLS</title>
+  <link rel="stylesheet" href="../PART/cabecera.css">
+  <link rel="stylesheet" href="../PART/footer.css">
+  <link rel="stylesheet" href="./maestra-sku.css">
+  <link rel="icon" type="image/png" href="../IMG/logo.png">
+</head>
+<body>
+  <div id="contenedor-cabecera"></div>
+  
+  <main class="maestra-main">
+    <div class="maestra-header">
+      <div>
+        <span class="pill-modulo">ADMINISTRACIÓN</span>
+        <h1>🗄️ Maestro de SKUs</h1>
+        <p>Gestione la base de datos central de productos. Modifique o agregue nuevos registros.</p>
+ <!-- Panel de Auditoría (Reemplaza al botón Volver) -->
+      <div id="auditTrailBox" class="audit-trail-box oculto">
+        <div class="audit-item">
+          <span class="audit-label">Última edición:</span>
+          <span id="lblUltimoGuardar" class="audit-value">Sin registros</span>
+        </div>
+        <div class="audit-item">
+          <span class="audit-label">Último borrado:</span>
+          <span id="lblUltimoEliminar" class="audit-value">Sin registros</span>
+        </div>
+      </div>
+
+    <div class="maestra-panel">
+      <div class="panel-toolbar">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="buscadorSku" placeholder="Buscar por SKU, EAN, Inner o Descripción..." class="input-search">
+        </div>
+        <div class="toolbar-actions">
+          <button id="btnAgregarFila" class="btn btn-agregar">+ Agregar Fila</button>
+          <button id="btnGuardarMaestra" class="btn btn-guardar">💾 Guardar Cambios</button>
+        </div>
+      </div>
+      
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Stock Number</th>
+              <th class="col-desc">Descripción</th>
+              <th>U.M.</th>
+              <th>EAN 13</th>
+              <th class="col-val">Val. EAN 13</th>
+              <th>Inner Code</th>
+              <th class="col-val">Val. Inner</th>
+              <th>EAN 14</th>
+              <th class="col-val">Val. EAN 14</th>
+              <th class="col-val">Val. Físico</th>
+              <th class="col-btn"></th> <!-- Cabecera para el botón X -->
+            </tr>
+          </thead>
+          <tbody id="bodyMaestra">
+            <tr><td colspan="10" style="text-align: center;">Cargando base de datos...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- Modal Loading Oficial -->
+  <div id="loadingOverlay" class="loading-overlay oculto">
+    <div class="loading-card">
+      <div class="logo-loader-wrap">
+        <div class="loader-ring"></div>
+        <img src="../IMG/logo.png" alt="SLS Logo">
+      </div>
+      <h3 id="loadingTitle">Sincronizando...</h3>
+      <p id="loadingText">Guardando en base de datos.</p>
+    </div>
+  </div>
+
+<!-- MODAL DE MENSAJE (Éxito / Error) -->
+  <div id="appModal" class="app-modal oculto">
+    <div class="app-modal-box">
+      <div id="appModalIcon" class="app-modal-icon success">✓</div>
+      <h3 id="appModalTitle">Proceso terminado</h3>
+      <p id="appModalMessage">Operación realizada correctamente.</p>
+      <button type="button" id="appModalOk" class="btn btn-guardar">Aceptar</button>
+    </div>
+  </div>
+
+  <!-- MODAL CONFIRMACIÓN (Sí / No) -->
+  <div id="confirmModal" class="confirm-modal oculto">
+    <div class="confirm-modal-box">
+      <div class="confirm-logo-wrap">
+        <img src="../IMG/logo.png" alt="SLS Logo">
+      </div>
+      <h3 id="confirmModalTitle">Confirmar acción</h3>
+      <p id="confirmModalMessage">Mensaje de confirmación.</p>
+      <div class="confirm-actions">
+        <button type="button" id="confirmCancelBtn" class="btn btn-outline">Cancelar</button>
+        <button type="button" id="confirmAcceptBtn" class="btn btn-guardar">Sí, continuar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="../JS/api.js"></script>
+  <script src="../JS/auth.js"></script>
+  <script src="../PART/cabecera.js"></script>
+  <script src="../PART/footer.js"></script>
+  <script src="./maestra-sku.js"></script>
+</body>
+</html>

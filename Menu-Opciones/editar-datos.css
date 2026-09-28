@@ -1,0 +1,139 @@
+body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: #eef3f8; color: #0f172a; }
+.split-main { max-width: 98%; margin: 0 auto; padding: 20px 10px 80px; }
+.split-header { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 15px 24px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+.split-header h1 { margin: 0 0 4px; font-size: 24px; font-weight: 900; }
+.split-header p { margin: 0; color: #64748b; font-size: 14px; }
+
+/* --- DISEÑO DE LOGO EN CABECERA --- */
+.header-logo-box {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.header-logo-box img {
+  width: 140px;
+  height: 80px;
+  object-fit: contain;
+}
+
+.split-container { display: flex; gap: 20px; height: calc(100vh - 240px); min-height: 500px; }
+.panel-box { flex: 1; background: #fff; border-radius: 16px; display: flex; flex-direction: column; box-shadow: 0 4px 12px rgba(0,0,0,0.05); overflow: hidden; border: 1px solid #dbe5ef; }
+
+.panel-head { padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; color: #fff; }
+.query-head { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); }
+.conteo-head { background: linear-gradient(135deg, #4c1d95 0%, #8b5cf6 100%); }
+.panel-head h3 { margin: 0; font-size: 16px; font-weight: 900; letter-spacing: 1px; }
+
+.panel-actions { display: flex; gap: 10px; align-items: center; }
+.input-search { padding: 8px 12px; border-radius: 8px; border: none; outline: none; font-size: 13px; min-width: 200px; }
+
+.table-container { flex: 1; overflow: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.data-table th { position: sticky; top: 0; background: #f8fafc; color: #334155; padding: 10px; text-align: left; font-weight: 900; border-bottom: 2px solid #e2e8f0; z-index: 1; }
+.data-table td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+.data-table tbody tr:hover { background: #f1f5f9; }
+
+/* Celdas Editables */
+.data-table td[contenteditable="true"] { cursor: text; outline: none; }
+.data-table td[contenteditable="true"]:focus { background: #eff6ff; box-shadow: inset 0 0 0 2px #3b82f6; }
+.row-modified { background-color: #fffbeb !important; } /* Fila amarilla si fue modificada */
+
+/* Botones */
+.btn { border: none; border-radius: 10px; padding: 0 16px; font-size: 13px; font-weight: 800; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; min-height: 36px; }
+.btn:hover { transform: translateY(-2px); }
+.btn-outline { background: #eaf4ff; color: #0f4c81; }
+.btn-query { background: #0f172a; color: #fff; }
+.btn-conteo { background: #0f172a; color: #fff; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* --- MODAL LOADING OFICIAL SLS --- */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: rgba(15, 23, 42, 0.62);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.loading-card {
+  width: 100%;
+  max-width: 360px;
+  background: #ffffff;
+  border-radius: 26px;
+  padding: 30px 26px;
+  text-align: center;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.32);
+}
+
+.logo-loader-wrap {
+  width: 150px;
+  height: 150px;
+  margin: 0 auto 18px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-loader-wrap img {
+  width: 105px;
+  height: 105px;
+  object-fit: contain;
+  border-radius: 50%;
+  z-index: 2;
+}
+
+.loader-ring {
+  position: absolute;
+  width: 142px;
+  height: 142px;
+  border-radius: 50%;
+  border: 6px solid #dbeafe;
+  border-top-color: #0f4c81;
+  border-right-color: #f8b400;
+  animation: spinLoader 0.9s linear infinite;
+}
+
+@keyframes spinLoader {
+  to { transform: rotate(360deg); }
+}
+
+.loading-card h3 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.loading-card p {
+  margin: 0;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.oculto { display: none !important; }
+
+/* --- Estilos para Modales Personalizados --- */
+.app-modal, .confirm-modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 99990; }
+.app-modal-box, .confirm-modal-box { background: #fff; border-radius: 24px; padding: 32px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.2); animation: popIn 0.3s ease-out; }
+@keyframes popIn { 0% { opacity: 0; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
+
+.app-modal-icon { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: bold; margin: 0 auto 16px; color: white; }
+.app-modal-icon.success { background: #16a34a; }
+.app-modal-icon.error { background: #dc2626; }
+
+.app-modal-box h3, .confirm-modal-box h3 { margin: 0 0 10px; color: #0f172a; font-size: 22px; font-weight: 900; }
+.app-modal-box p, .confirm-modal-box p { color: #64748b; font-size: 15px; margin: 0 0 24px; white-space: pre-wrap; }
+
+.confirm-logo-wrap { width: 80px; height: 80px; margin: 0 auto 16px; }
+.confirm-logo-wrap img { width: 100%; border-radius: 50%; }
+.confirm-actions { display: flex; gap: 12px; justify-content: center; }
+
+/* Botones específicos para modales (por si no están definidos) */
+.btn-guardar { background: #0f172a; color: #fff; border-radius: 10px; padding: 10px 24px; font-weight: 800; cursor: pointer; border: none; }
+.btn-guardar:hover { background: #1e293b; }
