@@ -320,12 +320,35 @@ btnProcesar.addEventListener("click", async () => {
       const puedeProcesar = !!estado?.puede_procesar;
 
       queryCargadoActual = queryOk;
+// --- LÓGICA PARA MOSTRAR LA BURBUJA AZUL Y NOMBRES DE AUDITORES ---
       let totalConteos = Number(estado?.conteos_guardados || 0);
 
       if (timelineBadgeConteo) {
         timelineBadgeConteo.textContent = totalConteos;
-        if (totalConteos > 0) timelineBadgeConteo.classList.remove("oculto");
-        else timelineBadgeConteo.classList.add("oculto");
+        
+        if (totalConteos > 0) {
+          timelineBadgeConteo.classList.remove("oculto", "timeline-badge-red", "timeline-badge-green");
+          timelineBadgeConteo.classList.add("timeline-badge-blue"); // Se pinta de azul corporativo
+          
+          // Cambia texto de "Auditor:" o "Auditores:" dinámicamente
+          textoConteo.textContent = totalConteos === 1 ? "Auditor:" : "Auditores:";
+
+          // Obtenemos los nombres de la BD para mostrarlos al pasar el cursor (Tooltip)
+          if(window.supabase) {
+            const { data } = await window.supabase
+              .from('conteo_items')
+              .select('auditor_email')
+              .eq('client_id', cliente.id);
+            
+            if(data && data.length > 0) {
+              const auditoresUnicos = [...new Set(data.map(d => (d.auditor_email || 'Auditor').split('@')[0].toUpperCase()))];
+              timelineBadgeConteo.title = auditoresUnicos.map((u, i) => `${i+1}. ${u}`).join("\n");
+            }
+          }
+        } else {
+          timelineBadgeConteo.classList.add("oculto");
+          textoConteo.textContent = "Pendiente";
+        }
       }
 
       pintarEstado(estadoQuery, textoQuery, queryOk, queryOk ? "Cargado" : "Pendiente");
@@ -470,42 +493,57 @@ async function cargarReporteBase() {
 // Llamar a la tabla base al iniciar (después de cargarEstado)
   cargarReporteBase();
 
-  function renderizarReporteDinamico() {
-    if (!reporteActualEnMemoria || reporteActualEnMemoria.length === 0) {
+// Función matemática unificada para calcular la diferencia
+  function calcularDiferenciaPredistribuido(r) {
+    let cantidad = Number(r.cantidad) || 0;
+    let valorInner = Number(r.valor_inner) || 1;
+    let valorEan14 = Number(r.valor_ean_14) || 1;
+    let valPlan = 0;
+    
+    if (r.um_min === "N1") valPlan = cantidad;
+    else if (r.um_min === "N2") valPlan = cantidad * valorInner;
+    else if (r.um_min === "N3") valPlan = cantidad * valorEan14;
+    else valPlan = cantidad;
+
+    let valReal = Number(r.real) || 0;
+    return valReal - valPlan;
+  }
+
+  function renderizarReporteDinamico(listaATrabajar = reporteActualEnMemoria) {
+    if (reporteActualEnMemoria.length === 0) {
       reporteBody.innerHTML = `<tr><td colspan="20">Sin reporte procesado.</td></tr>`;
+      document.getElementById("kpiPlan").textContent = "0 ITEMS";
+      document.getElementById("kpiReal").textContent = "0 ITEMS";
+      document.getElementById("kpiEfectividad").textContent = "0.00%";
+      document.getElementById("kpiEfectividadBox").className = "kpi-box bg-red";
+      return;
+    }
+
+    if (listaATrabajar.length === 0) {
+      reporteBody.innerHTML = `<tr><td colspan="20" style="text-align:center;">No hay resultados para este filtro.</td></tr>`;
       return;
     }
 
     reporteBody.innerHTML = "";
-    let countPlan = 0;
-    let countReal = 0;
+    
+    // Variables para controlar la aparición de los botones
+    let hayFaltantes = false;
+    let haySobrantes = false;
 
-    reporteActualEnMemoria.forEach(r => {
+    listaATrabajar.forEach(r => {
       const tr = document.createElement("tr");
 
-      // --- EJECUCIÓN DE FÓRMULAS EXCEL EN JS ---
-      let cantidad = Number(r.cantidad) || 0;
-      let valorInner = Number(r.valor_inner) || 1;
-      let valorEan14 = Number(r.valor_ean_14) || 1;
+      // Calculamos la diferencia
+      let valDif = calcularDiferenciaPredistribuido(r);
 
-      let valPlan = 0;
-      
-      // Fórmula Excel: =SI(M3="N1";F3;SI(M3="N2";F3*J3;SI(M3="N3";F3*L3;"")))
-      if (r.um_min === "N1") valPlan = cantidad;
-      else if (r.um_min === "N2") valPlan = cantidad * valorInner;
-      else if (r.um_min === "N3") valPlan = cantidad * valorEan14;
-      else valPlan = cantidad;
+      // Si existe un negativo o un positivo, lo marcamos para mostrar el botón respectivo
+      if (valDif < 0) hayFaltantes = true;
+      if (valDif > 0) haySobrantes = true;
 
-      r.plan = valPlan; 
-      
+      // Variables visuales
+      let valPlan = (Number(r.real) || 0) - valDif; 
       let valReal = Number(r.real) || 0;
-      let valDif = valReal - valPlan; // Diferencia = Real - Plan
 
-      // KPIs
-      if (valPlan > 0) countPlan++;
-      if (valReal > 0) countReal++;
-
-      // Clases CSS para colores de la celda "Diferencia"
       let claseColorDif = "";
       if (valDif === 0) claseColorDif = "dif-cero"; 
       else if (valDif > 0) claseColorDif = "dif-pos"; 
@@ -514,27 +552,23 @@ async function cargarReporteBase() {
       let clasePaleta = (r.paleta === "LPN NO COINCIDE") ? "estado-error" : "";
       let claseCondicion = (r.condicion === "PRIORIDAD AUDITAR") ? "estado-warning" : "";
 
-      // DIBUJAR LAS 20 COLUMNAS EXACTAS
       tr.innerHTML = `
         <td>${r.lpn || "-"}</td>
         <td style="font-weight: bold;">${r.sku || "-"}</td>
         <td>${r.descripcion || "-"}</td>
         <td>${r.um || "-"}</td>
-        <td>${cantidad}</td>
-        
+        <td>${r.cantidad || 0}</td>
         <td>${r.ean_13 || "-"}</td>
         <td>${r.valor_ean_13 || ""}</td>
         <td>${r.inner_code || "-"}</td>
         <td>${r.valor_inner || ""}</td>
         <td>${r.ean_14 || "-"}</td>
         <td>${r.valor_ean_14 || ""}</td>
-        
         <td style="font-weight: 900;">${r.um_min || "N1"}</td>
         <td>${valPlan > 0 ? valPlan : ""}</td>
         <td>${valReal > 0 ? valReal : ""}</td>
         <td class="${clasePaleta}">${r.paleta || ""}</td>
         <td class="${claseColorDif}">${valDif}</td>
-        
         <td>${r.comentario || ""}</td>
         <td>${r.comentario_2 || ""}</td>
         <td>${r.key || ""}</td>
@@ -543,11 +577,27 @@ async function cargarReporteBase() {
       reporteBody.appendChild(tr);
     });
 
-    // ACTUALIZAR KPIs VISUALES EN LA CABECERA
-    document.getElementById("kpiPlan").textContent = `${countPlan} ITEMS`;
-    document.getElementById("kpiReal").textContent = `${countReal} ITEMS`;
+    // CONTROL DINÁMICO DE BOTONES (Oculta/Muestra basado en lo que encuentre)
+    if (listaATrabajar === reporteActualEnMemoria) {
+      const btnF = document.getElementById("btnFiltroFaltante");
+      const btnS = document.getElementById("btnFiltroSobrante");
+      if(btnF) btnF.classList.toggle("oculto", !hayFaltantes);
+      if(btnS) btnS.classList.toggle("oculto", !haySobrantes);
+    }
 
-    const efectividad = countPlan > 0 ? (countReal / countPlan) * 100 : 0;
+    // Recalcular KPIs GLOBALES (siempre se calcula en base a TODO, no al filtro)
+    let totalPlanG = 0, totalRealG = 0;
+    reporteActualEnMemoria.forEach(r => {
+      let dif = calcularDiferenciaPredistribuido(r);
+      let p = (Number(r.real) || 0) - dif;
+      if (p > 0) totalPlanG++;
+      if ((Number(r.real) || 0) > 0) totalRealG++;
+    });
+
+    document.getElementById("kpiPlan").textContent = `${totalPlanG} ITEMS`;
+    document.getElementById("kpiReal").textContent = `${totalRealG} ITEMS`;
+
+    const efectividad = totalPlanG > 0 ? (totalRealG / totalPlanG) * 100 : 0;
     const kpiEfectividadBox = document.getElementById("kpiEfectividadBox");
     document.getElementById("kpiEfectividad").textContent = `${efectividad.toFixed(2)}%`;
 
@@ -555,6 +605,36 @@ async function cargarReporteBase() {
     if (efectividad < 60) kpiEfectividadBox.classList.add("bg-grad-red");
     else if (efectividad < 90) kpiEfectividadBox.classList.add("bg-grad-yellow");
     else kpiEfectividadBox.classList.add("bg-grad-green");
+  }
+
+  // --- EVENTOS DE FILTROS ---
+  const btnFiltroFaltante = document.getElementById("btnFiltroFaltante");
+  const btnFiltroSobrante = document.getElementById("btnFiltroSobrante");
+  const btnFiltroTodos = document.getElementById("btnFiltroTodos");
+
+  if(btnFiltroFaltante) {
+    btnFiltroFaltante.addEventListener("click", () => {
+      // Filtra estrictamente donde Diferencia sea menor a 0
+      const faltantes = reporteActualEnMemoria.filter(r => calcularDiferenciaPredistribuido(r) < 0);
+      renderizarReporteDinamico(faltantes);
+      btnFiltroTodos.classList.remove("oculto");
+    });
+  }
+
+  if(btnFiltroSobrante) {
+    btnFiltroSobrante.addEventListener("click", () => {
+      // Filtra estrictamente donde Diferencia sea mayor a 0
+      const sobrantes = reporteActualEnMemoria.filter(r => calcularDiferenciaPredistribuido(r) > 0);
+      renderizarReporteDinamico(sobrantes);
+      btnFiltroTodos.classList.remove("oculto");
+    });
+  }
+
+  if(btnFiltroTodos) {
+    btnFiltroTodos.addEventListener("click", () => {
+      renderizarReporteDinamico(reporteActualEnMemoria); 
+      btnFiltroTodos.classList.add("oculto");
+    });
   }
   function normalizarLogo(logoUrl) {
     if (!logoUrl) return "../IMG/logo.png";

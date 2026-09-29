@@ -82,22 +82,38 @@
 
     <!-- REPORTE DE 20 COLUMNAS -->
     <section class="reporte-panel">
-      <div class="reporte-head">
+<div class="reporte-head" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+        
         <h2>Reporte Predistribuido</h2>
-        <div class="reporte-kpis">
-          <div class="kpi-box kpi-blue">
-            <span class="kpi-lbl">PLAN</span>
-            <span class="kpi-val" id="kpiPlan">0 ITEMS</span>
+        
+        <!-- CONTENEDOR CENTRAL: Agrupa y centra los KPIs y Botones de Filtro -->
+        <div style="display: flex; align-items: center; gap: 12px; flex: 1; justify-content: center;">
+          
+          <div class="reporte-kpis" style="margin: 0;">
+            <div class="kpi-box kpi-blue">
+              <span class="kpi-lbl">PLAN</span>
+              <span class="kpi-val" id="kpiPlan">0 ITEMS</span>
+            </div>
+            <div class="kpi-box kpi-blue">
+              <span class="kpi-lbl">REAL</span>
+              <span class="kpi-val" id="kpiReal">0 ITEMS</span>
+            </div>
+            <div class="kpi-box" id="kpiEfectividadBox">
+              <span class="kpi-lbl">EFECTIVIDAD</span>
+              <span class="kpi-val" id="kpiEfectividad">0.00%</span>
+            </div>
           </div>
-          <div class="kpi-box kpi-blue">
-            <span class="kpi-lbl">REAL</span>
-            <span class="kpi-val" id="kpiReal">0 ITEMS</span>
+
+          <!-- BOTONES DE FILTRO RÁPIDO (Ocultos por defecto, el JS los muestra si hay errores) -->
+          <div style="display: flex; gap: 8px;">
+            <button id="btnFiltroFaltante" class="btn btn-sm oculto" style="background:#ff5050; color:#fff; border:none;" title="Ver Faltantes">🔍 FALTANTES</button>
+            <button id="btnFiltroSobrante" class="btn btn-sm oculto" style="background:#ffc000; color:#000; border:none;" title="Ver Sobrantes">🔍 SOBRANTES</button>
+            <button id="btnFiltroTodos" class="btn btn-sm btn-outline oculto" title="Quitar Filtro">✖ QUITAR FILTRO</button>
           </div>
-          <div class="kpi-box" id="kpiEfectividadBox">
-            <span class="kpi-lbl">EFECTIVIDAD</span>
-            <span class="kpi-val" id="kpiEfectividad">0.00%</span>
-          </div>
+
         </div>
+
+        <!-- BOTONES DERECHA -->
         <div>
           <button id="btnIrEditarDatos" class="btn btn-secundario btn-sm">✏️ Editar Datos</button>
           <button id="btnForzarN1" class="btn btn-warning btn-sm">Forzar a N1</button>

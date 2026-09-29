@@ -5,14 +5,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!clienteRaw) return window.location.href = "./clientes-retail.html";
   
   const cliente = JSON.parse(clienteRaw);
+  
+  // NECESITAMOS AL USUARIO PARA GUARDAR NUEVAS FILAS A SU NOMBRE
+  const user = typeof window.getUser === "function" ? window.getUser() : null;
+
   document.getElementById("clienteNombreSplit").textContent = cliente.nombre;
 
   const clienteLogoSplit = document.getElementById("clienteLogoSplit");
   if (clienteLogoSplit) {
     clienteLogoSplit.src = normalizarLogo(cliente.logo_url);
-    clienteLogoSplit.onerror = () => {
-      clienteLogoSplit.src = "../IMG/logo.png";
-    };
+    clienteLogoSplit.onerror = () => { clienteLogoSplit.src = "../IMG/logo.png"; };
   }
 
   // Elementos
@@ -22,25 +24,27 @@ document.addEventListener("DOMContentLoaded", async () => {
   const buscarConteo = document.getElementById("buscarConteo");
   const btnGuardarQuery = document.getElementById("btnGuardarQuery");
   const btnGuardarConteo = document.getElementById("btnGuardarConteo");
+  const btnAgregarConteo = document.getElementById("btnAgregarConteo");
   const loadingOverlay = document.getElementById("loadingOverlay");
 
   // Arrays en memoria
   let dataQuery = [];
   let dataConteo = [];
+  let conteoEliminados = []; // <--- AQUI VAN LOS IDS DE LAS FILAS QUE ELIMINAS VISUALMENTE
 
-  // --- ADAPTAR CABECERAS SI ES PREDISTRIBUIDO ---
+// --- ADAPTAR CABECERAS SI ES PREDISTRIBUIDO ---
   if (cliente.tipo_flujo === "PREDISTRIBUIDO") {
     // Tabla Query
-    document.querySelector("#bodyQuery").previousElementSibling.innerHTML = `
-      <tr><th>LPN</th><th>SKU</th><th>Descripción</th><th>UM</th><th>Cantidad</th></tr>
-    `;
-    // Tabla Conteo
-    document.querySelector("#bodyConteo").previousElementSibling.innerHTML = `
-      <tr><th>Auditor</th><th>Paleta</th><th>LPN</th><th>EAN</th><th>Cantidad</th></tr>
-    `;
+    document.querySelector("#bodyQuery").previousElementSibling.innerHTML = `<tr><th>LPN</th><th>SKU</th><th>Descripción</th><th>UM</th><th>Cantidad</th></tr>`;
+    
+    // Tabla Conteo Predistribuido
+    document.querySelector("#bodyConteo").previousElementSibling.innerHTML = `<tr><th>Auditor</th><th>Paleta</th><th>LPN</th><th>EAN</th><th>Cantidad</th><th style="width:70px;text-align:center;">Eliminar</th></tr>`;
+  } else {
+    // Tabla Conteo Regular
+    document.querySelector("#bodyConteo").previousElementSibling.innerHTML = `<tr><th>Auditor</th><th>Tienda</th><th>Bulto (Pallet)</th><th>EAN</th><th>Cantidad</th><th style="width:70px;text-align:center;">Eliminar</th></tr>`;
   }
 
-  // --- LÓGICA DE MODALES PERSONALIZADOS ---
+  // --- MODALES ---
   const appModal = document.getElementById("appModal");
   const appModalOk = document.getElementById("appModalOk");
   if (appModalOk) appModalOk.addEventListener("click", () => appModal.classList.add("oculto"));
@@ -121,63 +125,89 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // --- RENDERIZAR TABLA CONTEO ---
+  // --- RENDERIZAR TABLA CONTEO Y CREAR FILAS ---
   function renderConteo(lista) {
     bodyConteo.innerHTML = "";
-    if(!lista.length) return bodyConteo.innerHTML = "<tr><td colspan='5'>No hay datos</td></tr>";
+    conteoEliminados = []; // Reiniciamos la basura temporal
+    if(!lista.length) return bodyConteo.innerHTML = "<tr><td colspan='6'>No hay datos</td></tr>";
 
-    lista.forEach(r => {
-      const tr = document.createElement("tr");
-      tr.dataset.id = r.id;
+    lista.forEach(r => agregarFilaConteo(r));
+  }
+
+  function agregarFilaConteo(r = {}) {
+    const tr = document.createElement("tr");
+    if (r.id) tr.dataset.id = r.id;
+    
+    // Si r viene vacío (nueva fila), usamos el auditor actual
+    const auditorName = (r.auditor_email || user?.email || '').split('@')[0];
+    
+    if (cliente.tipo_flujo === "PREDISTRIBUIDO") {
+        tr.innerHTML = `
+          <td>${auditorName}</td>
+          <td contenteditable="true" data-field="bulto">${r.bulto || ''}</td>
+          <td contenteditable="true" data-field="tienda">${r.tienda || ''}</td>
+          <td contenteditable="true" data-field="ean">${r.ean || ''}</td>
+          <td contenteditable="true" data-field="cantidad" class="col-number">${r.cantidad !== null && r.cantidad !== undefined ? r.cantidad : ''}</td>
+          <td style="text-align:center;"><button class="btn-delete-row" style="color:#dc2626; font-weight:bold; background:transparent; border:none; cursor:pointer; font-size:16px;">✕</button></td>
+        `;
+    } else {
+        tr.innerHTML = `
+          <td>${auditorName}</td>
+          <td contenteditable="true" data-field="tienda">${r.tienda || ''}</td>
+          <td contenteditable="true" data-field="bulto">${r.bulto || ''}</td>
+          <td contenteditable="true" data-field="ean">${r.ean || ''}</td>
+          <td contenteditable="true" data-field="cantidad" class="col-number">${r.cantidad !== null && r.cantidad !== undefined ? r.cantidad : ''}</td>
+          <td style="text-align:center;"><button class="btn-delete-row" style="color:#dc2626; font-weight:bold; background:transparent; border:none; cursor:pointer; font-size:16px;">✕</button></td>
+        `;
+    }
+    
+    // Si editan el texto, marcamos la fila
+    tr.addEventListener("input", () => tr.classList.add("row-modified"));
+    
+    // BOTÓN ELIMINAR (Solo borra visualmente. La DB se actualiza al Guardar)
+    tr.querySelector(".btn-delete-row").addEventListener("click", () => {
+       if (tr.dataset.id) {
+         conteoEliminados.push(tr.dataset.id); // Guardamos el ID en la basura temporal
+       }
+       tr.remove(); // Desaparece de pantalla
+    });
+
+    bodyConteo.appendChild(tr);
+  }
+
+  // --- BOTÓN AGREGAR FILA ---
+  if (btnAgregarConteo) {
+    btnAgregarConteo.addEventListener("click", () => {
+      const trVacio = bodyConteo.querySelector("td[colspan]");
+      if (trVacio) bodyConteo.innerHTML = ""; // Borramos el texto "No hay datos"
       
-      if (cliente.tipo_flujo === "PREDISTRIBUIDO") {
-          tr.innerHTML = `
-            <td>${(r.auditor_email || '').split('@')[0]}</td>
-            <td contenteditable="true" data-field="bulto">${r.bulto || ''}</td>
-            <td contenteditable="true" data-field="tienda">${r.tienda || ''}</td>
-            <td contenteditable="true" data-field="ean">${r.ean || ''}</td>
-            <td contenteditable="true" data-field="cantidad" class="col-number">${r.cantidad !== null && r.cantidad !== undefined ? r.cantidad : ''}</td>
-          `;
-      } else {
-          tr.innerHTML = `
-            <td>${(r.auditor_email || '').split('@')[0]}</td>
-            <td contenteditable="true" data-field="tienda">${r.tienda || ''}</td>
-            <td contenteditable="true" data-field="bulto">${r.bulto || ''}</td>
-            <td contenteditable="true" data-field="ean">${r.ean || ''}</td>
-            <td contenteditable="true" data-field="cantidad" class="col-number">${r.cantidad !== null && r.cantidad !== undefined ? r.cantidad : ''}</td>
-          `;
-      }
-      tr.addEventListener("input", () => tr.classList.add("row-modified"));
-      bodyConteo.appendChild(tr);
+      agregarFilaConteo({}); // Fila vacía
+      
+      const ultimaFila = bodyConteo.lastElementChild;
+      ultimaFila.classList.add("row-modified"); // Fuerza a que lo reconozca como "nuevo"
+      
+      // Foco automático en la primera celda editable
+      const primeraCeldaEditable = ultimaFila.querySelector("td[contenteditable='true']");
+      if(primeraCeldaEditable) primeraCeldaEditable.focus();
     });
   }
 
   // --- BUSCADORES ---
   buscarQuery.addEventListener("input", (e) => {
     const text = e.target.value.toLowerCase();
-    const filtrado = dataQuery.filter(r => 
-      (r.sku || "").toLowerCase().includes(text) || 
-      (r.descripcion || "").toLowerCase().includes(text)
-    );
+    const filtrado = dataQuery.filter(r => (r.sku || "").toLowerCase().includes(text) || (r.descripcion || "").toLowerCase().includes(text));
     renderQuery(filtrado);
   });
-
   buscarConteo.addEventListener("input", (e) => {
     const text = e.target.value.toLowerCase();
-    const filtrado = dataConteo.filter(r => 
-      (r.ean || "").toLowerCase().includes(text) || 
-      (r.bulto || "").toLowerCase().includes(text)
-    );
+    const filtrado = dataConteo.filter(r => (r.ean || "").toLowerCase().includes(text) || (r.bulto || "").toLowerCase().includes(text));
     renderConteo(filtrado);
   });
 
-  // --- GUARDAR CAMBIOS QUERY (CON MODALES) ---
+  // --- GUARDAR CAMBIOS QUERY ---
   btnGuardarQuery.addEventListener("click", async () => {
     const filasModificadas = Array.from(bodyQuery.querySelectorAll(".row-modified"));
-    
-    if(!filasModificadas.length) {
-      return mostrarModal("Sin cambios", "No hay modificaciones para guardar en Datos Query.", "error");
-    }
+    if(!filasModificadas.length) return mostrarModal("Sin cambios", "No hay modificaciones para guardar en Datos Query.", "error");
 
     const confirmar = await mostrarConfirmacion("¿Guardar Query?", `Se actualizarán ${filasModificadas.length} filas en la base de datos.`);
     if (!confirmar) return;
@@ -205,9 +235,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         tr.classList.remove("row-modified");
       }
       
-      // FORZA AL REPORTE A RECALCULARSE CUANDO REGRESES
-      localStorage.removeItem(`reportePredi_${cliente.id}`);
-
+      localStorage.removeItem(`reportePredi_${cliente.id}`); // Forza recalculo
       mostrarModal("Éxito", "Cambios de QUERY guardados en Supabase.", "success");
       await cargarDatos(); 
     } catch (e) {
@@ -218,21 +246,33 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // --- GUARDAR CAMBIOS CONTEO (CON MODALES) ---
+  // --- GUARDAR CAMBIOS CONTEO (MAGIA TEMPORAL APLICADA) ---
   btnGuardarConteo.addEventListener("click", async () => {
     const filasModificadas = Array.from(bodyConteo.querySelectorAll(".row-modified"));
     
-    if(!filasModificadas.length) {
-      return mostrarModal("Sin cambios", "No hay modificaciones para guardar en Datos Conteo.", "error");
+    if(!filasModificadas.length && !conteoEliminados.length) {
+      return mostrarModal("Sin cambios", "No eliminaste ni modificaste ninguna fila.", "error");
     }
 
-    const confirmar = await mostrarConfirmacion("¿Guardar Conteo?", `Se actualizarán ${filasModificadas.length} filas en la base de datos.`);
+    const confirmar = await mostrarConfirmacion("¿Guardar Conteo?", `Se actualizarán/crearán ${filasModificadas.length} filas y se eliminarán ${conteoEliminados.length} de la base de datos.`);
     if (!confirmar) return;
 
     btnGuardarConteo.disabled = true;
     loadingOverlay.classList.remove("oculto");
 
     try {
+      // 1. ELIMINAMOS EN SUPABASE LO QUE BORRASTE DE LA PANTALLA
+      for (const idEliminado of conteoEliminados) {
+        await window.eliminarConteoItem(idEliminado);
+      }
+
+      // 2. CREAMOS UN LOTE SI HAY FILAS NUEVAS
+      let loteActual = null;
+      if (filasModificadas.some(tr => !tr.dataset.id)) {
+        loteActual = await window.getOrCreateConteoLote({ clientId: cliente.id, auditorEmail: user.email });
+      }
+
+      // 3. ACTUALIZAMOS O INSERTAMOS
       for (const tr of filasModificadas) {
         const id = tr.dataset.id;
         const cantValor = tr.querySelector('[data-field="cantidad"]').textContent.trim();
@@ -244,14 +284,22 @@ document.addEventListener("DOMContentLoaded", async () => {
           cantidad: cantValor === "" ? null : Number(cantValor) 
         };
 
-        await window.actualizarConteoItem(id, payload);
+        if (id) {
+          // Si tiene ID, existía y solo lo modificó
+          await window.actualizarConteoItem(id, payload);
+        } else {
+          // Si no tiene ID, es una fila agregada con el botón
+          payload.client_id = cliente.id;
+          payload.conteo_lote_id = loteActual.id;
+          payload.auditor_email = user.email;
+          await window.insertarConteoItem(payload); 
+        }
         tr.classList.remove("row-modified");
       }
       
-      // FORZA AL REPORTE A RECALCULARSE CUANDO REGRESES
-      localStorage.removeItem(`reportePredi_${cliente.id}`);
-
-      mostrarModal("Éxito", "Cambios de CONTEO guardados en Supabase.", "success");
+      conteoEliminados = []; // Vaciamos la basura
+      localStorage.removeItem(`reportePredi_${cliente.id}`); // Forza recalculo
+      mostrarModal("Éxito", "Tus cambios de CONTEO se guardaron en la Nube.", "success");
       await cargarDatos();
     } catch (e) {
       mostrarModal("Error", "Error al guardar Conteo: " + e.message, "error");
@@ -261,12 +309,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // --- FUNCIÓN PARA LOGOS ---
   function normalizarLogo(logoUrl) {
     if (!logoUrl) return "../IMG/logo.png";
-    if (logoUrl.startsWith("IMG/")) {
-      return "../" + logoUrl;
-    }
+    if (logoUrl.startsWith("IMG/")) return "../" + logoUrl;
     return logoUrl;
   }
 });

@@ -475,19 +475,48 @@ function configurarPermisos() {
 
       queryCargadoActual = queryOk;
 
-// --- LÓGICA PARA MOSTRAR LA BURBUJA DE CONTEOS EN TIEMPO REAL ---
-      // Ahora lee directamente el conteo exacto de Supabase
+// --- LÓGICA PARA MOSTRAR LA BURBUJA DE CONTEOS EN TIEMPO REAL Y TOOLTIP ---
       let totalConteos = Number(estado?.conteos_guardados || 0);
+      const contenedorBadge = document.getElementById("contenedorBadgeConteo");
+      const lblAuditores = document.getElementById("lblAuditores");
 
       if (timelineBadgeConteo) {
         timelineBadgeConteo.textContent = totalConteos;
+        
         if (totalConteos > 0) {
-          timelineBadgeConteo.classList.remove("oculto");
+          if (contenedorBadge) contenedorBadge.classList.remove("oculto");
+          
+          timelineBadgeConteo.classList.remove("oculto", "timeline-badge-red", "timeline-badge-green");
+          timelineBadgeConteo.classList.add("timeline-badge-blue"); // Se pinta de Azul Corporativo
+          
+          // Asigna el texto "Auditor:" o "Auditores:" al nuevo label izquierdo
+          if (lblAuditores) lblAuditores.textContent = totalConteos === 1 ? "Auditor:" : "Auditores:";
+
+// Obtenemos los nombres usando la función que ya existe en tu api.js
+          try {
+            const data = await window.getConteoItems(cliente.id);
+            
+            if (data && data.length > 0) {
+              // Limpiamos el correo (ej: jcelisc@... -> JCELISC) y sacamos únicos
+              const auditoresUnicos = [...new Set(data.map(d => (d.auditor_email || 'Auditor').split('@')[0].toUpperCase()))];
+              
+              // Armamos la lista para el Tooltip (Al pasar el mouse)
+              const tooltipHtml = auditoresUnicos.map((u, i) => `${i+1}. ${u}`).join("\n");
+              timelineBadgeConteo.title = tooltipHtml; // Insertamos en el Title Nativo
+            } else {
+              timelineBadgeConteo.title = "Auditores registrados"; 
+            }
+          } catch (err) {
+            console.error("Error cargando nombres de auditores:", err);
+            timelineBadgeConteo.title = "Auditores registrados"; 
+          }
         } else {
-          timelineBadgeConteo.classList.add("oculto");
+          if (contenedorBadge) contenedorBadge.classList.add("oculto");
+          timelineBadgeConteo.title = "Sin conteos";
         }
       }
 
+      // Mantiene el texto superior como "Pendiente" o "Registrado"
       pintarEstado(estadoQuery, textoQuery, queryOk, queryOk ? "Cargado" : "Pendiente");
       pintarEstado(estadoConteo, textoConteo, conteoOk, conteoOk ? "Registrado" : "Pendiente");
       pintarEstado(estadoProceso, textoProceso, puedeProcesar, puedeProcesar ? "Disponible" : "Bloqueado");
@@ -531,8 +560,24 @@ function configurarPermisos() {
     }
   }
 
-  function renderizarReporteDinamico() {
-    if (reporteActualEnMemoria.length === 0) {
+// Helper que usa la MISMA FÓRMULA que la tabla para evitar desfases al filtrar
+  function calcularDiferenciaMatematica(r) {
+    let cantidad = Number(r.cantidad) || 0;
+    let valorInner = Number(r.valor_inner) || 1;
+    let valorEan14 = Number(r.valor_ean_14) || 1;
+    let valPlan = 0;
+    
+    if (r.um_min === "N1") valPlan = cantidad;
+    else if (r.um_min === "N2") valPlan = cantidad * valorInner;
+    else if (r.um_min === "N3") valPlan = cantidad * valorEan14;
+    else valPlan = cantidad;
+
+    let valReal = Number(r.real) || 0;
+    return valReal - valPlan;
+  }
+
+  function renderizarReporteDinamico(listaATrabajar = reporteActualEnMemoria) {
+    if (reporteActualEnMemoria.length === 0) { 
       reporteBody.innerHTML = `<tr><td colspan="19">Sin reporte procesado.</td></tr>`;
       document.getElementById("kpiPlan").textContent = "0 ITEMS";
       document.getElementById("kpiReal").textContent = "0 ITEMS";
@@ -541,52 +586,36 @@ function configurarPermisos() {
       return;
     }
 
+    if (listaATrabajar.length === 0) {
+      reporteBody.innerHTML = `<tr><td colspan="19" style="text-align:center;">No hay resultados para este filtro.</td></tr>`;
+      return;
+    }
+
     reporteBody.innerHTML = "";
     
-    let countPlan = 0;
-    let countReal = 0;
+    let hayFaltantes = false;
+    let haySobrantes = false;
 
-    reporteActualEnMemoria.forEach((r) => {
+    listaATrabajar.forEach((r) => {
       const tr = document.createElement("tr");
 
-      // --- EMULAR FÓRMULAS DE EXCEL EN TIEMPO REAL ---
-      let cantidad = Number(r.cantidad) || 0;
-      let valorInner = Number(r.valor_inner) || 1;
-      let valorEan14 = Number(r.valor_ean_14) || 1;
-      
-      let valPlan = 0;
-      
-      // Fórmula de Columna N (Plan): =SI(M="N1";F;SI(M="N2";F*J;SI(M="N3";F*L;"")))
-      if (r.um_min === "N1") {
-        valPlan = cantidad;
-      } else if (r.um_min === "N2") {
-        valPlan = cantidad * valorInner;
-      } else if (r.um_min === "N3") {
-        valPlan = cantidad * valorEan14;
-      } else {
-        valPlan = cantidad;
-      }
+      // Calculamos la diferencia
+      let valDif = calcularDiferenciaMatematica(r);
 
+      // Detectamos si en esta lista hay algún faltante/sobrante para mostrar/ocultar los botones luego
+      if (valDif < 0) hayFaltantes = true;
+      if (valDif > 0) haySobrantes = true;
+
+      // Plan y Real para visualización en tabla
+      let valPlan = (Number(r.real) || 0) - valDif; 
       let valReal = Number(r.real) || 0;
-      
-      // Fórmula de Columna Q (Diferencia): = REAL - PLAN
-      let valDif = valReal - valPlan;
 
-      // Conteo para KPIs
-      if (valPlan > 0) countPlan++;
-      if (valReal > 0) countReal++;
-
-      // Determinar color de la celda Diferencia
       let claseColorDif = "";
-      if (valDif === 0) {
-        claseColorDif = "dif-cero";
-      } else if (valDif > 0) {
-        claseColorDif = "dif-pos";
-      } else if (valDif < 0) {
-        claseColorDif = "dif-neg";
-      }
+      if (valDif === 0) claseColorDif = "dif-cero";
+      else if (valDif > 0) claseColorDif = "dif-pos";
+      else if (valDif < 0) claseColorDif = "dif-neg";
 
-tr.innerHTML = `
+      tr.innerHTML = `
         <td>${valor(r.nro)}</td>
         <td>${valor(r.columna_b)}</td>
         <td t="s">${valor(r.sku)}</td>
@@ -599,39 +628,75 @@ tr.innerHTML = `
         <td>${valor(r.valor_inner)}</td>
         <td t="s">${valor(r.ean_14)}</td>
         <td>${valor(r.valor_ean_14)}</td>
-        
         <td style="font-weight: 900;">${r.um_min}</td>
         <td>${valPlan > 0 ? valPlan : ""}</td>
         <td>${valReal > 0 ? valReal : ""}</td>
         <td t="s">${valor(r.ubicacion)}</td>
-        
         <td class="${claseColorDif}">${valDif}</td>
-        
         <td>${valor(r.comentario)}</td>
         <td>${valor(r.comentario_2)}</td>
       `;
-
       reporteBody.appendChild(tr);
     });
 
-    // ACTUALIZAR LOS KPIs Y PORCENTAJE
-    document.getElementById("kpiPlan").textContent = `${countPlan} ITEMS`;
-    document.getElementById("kpiReal").textContent = `${countReal} ITEMS`;
+    // CONTROL DINÁMICO DE BOTONES (Solo evalúa si mostrar/ocultar cuando está viendo TODA la lista)
+    if (listaATrabajar === reporteActualEnMemoria) {
+      const btnF = document.getElementById("btnFiltroFaltante");
+      const btnS = document.getElementById("btnFiltroSobrante");
+      if(btnF) btnF.classList.toggle("oculto", !hayFaltantes);
+      if(btnS) btnS.classList.toggle("oculto", !haySobrantes);
+    }
 
-    const efectividad = countPlan > 0 ? (countReal / countPlan) * 100 : 0;
+    // Recalcular KPIs GLOBALES (siempre sobre la memoria completa)
+    let totalPlanG = 0, totalRealG = 0;
+    reporteActualEnMemoria.forEach(r => {
+      let dif = calcularDiferenciaMatematica(r);
+      let p = (Number(r.real) || 0) - dif;
+      if (p > 0) totalPlanG++;
+      if ((Number(r.real) || 0) > 0) totalRealG++;
+    });
+
+    document.getElementById("kpiPlan").textContent = `${totalPlanG} ITEMS`;
+    document.getElementById("kpiReal").textContent = `${totalRealG} ITEMS`;
+
+    const efectividad = totalPlanG > 0 ? (totalRealG / totalPlanG) * 100 : 0;
     const kpiEfectividadBox = document.getElementById("kpiEfectividadBox");
     
     document.getElementById("kpiEfectividad").textContent = `${efectividad.toFixed(2)}%`;
-    
-kpiEfectividadBox.classList.remove("bg-grad-red", "bg-grad-yellow", "bg-grad-green", "bg-red"); // Agrego bg-red por si estaba en memoria
-    if (efectividad < 60) {
-      kpiEfectividadBox.classList.add("bg-grad-red");
-    } else if (efectividad < 90) {
-      kpiEfectividadBox.classList.add("bg-grad-yellow");
-    } else {
-      kpiEfectividadBox.classList.add("bg-grad-green");
-    }
+    kpiEfectividadBox.classList.remove("bg-grad-red", "bg-grad-yellow", "bg-grad-green", "bg-red");
+    if (efectividad < 60) kpiEfectividadBox.classList.add("bg-grad-red");
+    else if (efectividad < 90) kpiEfectividadBox.classList.add("bg-grad-yellow");
+    else kpiEfectividadBox.classList.add("bg-grad-green");
   }
+
+  // --- EVENTOS DE FILTROS ---
+  const btnFiltroFaltante = document.getElementById("btnFiltroFaltante");
+  const btnFiltroSobrante = document.getElementById("btnFiltroSobrante");
+  const btnFiltroTodos = document.getElementById("btnFiltroTodos");
+
+  if(btnFiltroFaltante) {
+    btnFiltroFaltante.addEventListener("click", () => {
+      const faltantes = reporteActualEnMemoria.filter(r => calcularDiferenciaMatematica(r) < 0);
+      renderizarReporteDinamico(faltantes);
+      btnFiltroTodos.classList.remove("oculto");
+    });
+  }
+
+  if(btnFiltroSobrante) {
+    btnFiltroSobrante.addEventListener("click", () => {
+      const sobrantes = reporteActualEnMemoria.filter(r => calcularDiferenciaMatematica(r) > 0);
+      renderizarReporteDinamico(sobrantes);
+      btnFiltroTodos.classList.remove("oculto");
+    });
+  }
+
+  if(btnFiltroTodos) {
+    btnFiltroTodos.addEventListener("click", () => {
+      renderizarReporteDinamico(reporteActualEnMemoria); 
+      btnFiltroTodos.classList.add("oculto");
+    });
+  }
+
   async function leerExcelQuery(archivo) {
     if (typeof XLSX === "undefined") {
       throw new Error("No se cargó la librería XLSX. Verifique ../LIB/xlsx.full.min.js.");

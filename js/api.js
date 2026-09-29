@@ -629,5 +629,19 @@ window.eliminarConteoItem = async function (id) {
     if (!response.ok) throw new Error("Error eliminando registro del conteo.");
   };
 
+window.insertarConteoItem = async function (payload) {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/conteo_items`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        "Prefer": "return=minimal"
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) throw new Error("Error insertando nueva fila en Conteo.");
+  };
+
 })(); 
 

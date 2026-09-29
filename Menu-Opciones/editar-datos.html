@@ -51,15 +51,18 @@
         </div>
       </div>
 
-      <!-- PANEL DERECHO: CONTEO -->
+<!-- PANEL DERECHO: CONTEO -->
       <div class="panel-box">
+        
         <div class="panel-head conteo-head">
           <h3>DATOS CONTEO</h3>
           <div class="panel-actions">
             <input type="text" id="buscarConteo" placeholder="🔍 Buscar EAN o Bulto..." class="input-search">
+            <button id="btnAgregarConteo" class="btn btn-sm btn-outline" style="background:#fff; color:#4c1d95; border:none; margin-right: 5px;">➕ Agregar Fila</button>
             <button id="btnGuardarConteo" class="btn btn-sm btn-conteo">💾 Guardar Cambios</button>
           </div>
-        </div>
+        </div> <!-- ¡ESTE ES EL DIV QUE FALTABA! Cierra la cabecera morada -->
+
         <div class="table-container">
           <table class="data-table">
             <thead>
@@ -67,15 +70,17 @@
                 <th>Auditor</th>
                 <th>Tienda</th>
                 <th>Bulto (Pallet)</th>
-                <th>EAN</th>
+<th>EAN</th>
                 <th>Cantidad</th>
+                <th style="width:70px;text-align:center;">Eliminar</th>
               </tr>
             </thead>
             <tbody id="bodyConteo">
-              <tr><td colspan="5">Cargando...</td></tr>
+              <tr><td colspan="6">Cargando...</td></tr>
             </tbody>
           </table>
         </div>
+
       </div>
     </div>
   </main>
