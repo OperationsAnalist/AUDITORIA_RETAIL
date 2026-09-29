@@ -520,7 +520,7 @@ async function cargarReporteBase() {
     return valReal - valPlan;
   }
 
-  function renderizarReporteDinamico(listaATrabajar = reporteActualEnMemoria) {
+  function renderizarReporteDinamico(listaATrabajar = reporteActualEnMemoria, esFiltrado = false) {
     if (reporteActualEnMemoria.length === 0) {
       reporteBody.innerHTML = `<tr><td colspan="20">Sin reporte procesado.</td></tr>`;
       document.getElementById("kpiPlan").textContent = "0 ITEMS";
@@ -530,73 +530,73 @@ async function cargarReporteBase() {
       return;
     }
 
-    if (listaATrabajar.length === 0) {
-      reporteBody.innerHTML = `<tr><td colspan="20" style="text-align:center;">No hay resultados para este filtro.</td></tr>`;
-      return;
-    }
-
     reporteBody.innerHTML = "";
-    
-    // Variables para controlar la aparición de los botones
-    let hayFaltantes = false;
-    let haySobrantes = false;
 
-    listaATrabajar.forEach(r => {
-      const tr = document.createElement("tr");
+    if (listaATrabajar.length === 0) {
+      reporteBody.innerHTML = `<tr><td colspan="20" style="text-align:center;">No hay resultados para esta combinación de filtros.</td></tr>`;
+    } else {
+      // Variables para controlar qué botones dinámicos mostrar
+      let hayFaltantes = false;
+      let haySobrantes = false;
+      let hayPrioridad = false;
 
-      // Calculamos la diferencia
-      let valDif = calcularDiferenciaPredistribuido(r);
+      listaATrabajar.forEach(r => {
+        const tr = document.createElement("tr");
 
-      // Si existe un negativo o un positivo, lo marcamos para mostrar el botón respectivo
-      if (valDif < 0) hayFaltantes = true;
-      if (valDif > 0) haySobrantes = true;
+        let valDif = calcularDiferenciaPredistribuido(r);
 
-      // Variables visuales
-      let valPlan = (Number(r.real) || 0) - valDif; 
-      let valReal = Number(r.real) || 0;
+        if (valDif < 0) hayFaltantes = true;
+        if (valDif > 0) haySobrantes = true;
+        if (r.condicion === "PRIORIDAD AUDITAR") hayPrioridad = true;
 
-      let claseColorDif = "";
-      if (valDif === 0) claseColorDif = "dif-cero"; 
-      else if (valDif > 0) claseColorDif = "dif-pos"; 
-      else if (valDif < 0) claseColorDif = "dif-neg"; 
+        let valPlan = (Number(r.real) || 0) - valDif; 
+        let valReal = Number(r.real) || 0;
 
-      let clasePaleta = (r.paleta === "LPN NO COINCIDE") ? "estado-error" : "";
-      let claseCondicion = (r.condicion === "PRIORIDAD AUDITAR") ? "estado-warning" : "";
+        let claseColorDif = "";
+        if (valDif === 0) claseColorDif = "dif-cero"; 
+        else if (valDif > 0) claseColorDif = "dif-pos"; 
+        else if (valDif < 0) claseColorDif = "dif-neg"; 
 
-      tr.innerHTML = `
-        <td>${r.lpn || "-"}</td>
-        <td style="font-weight: bold;">${r.sku || "-"}</td>
-        <td>${r.descripcion || "-"}</td>
-        <td>${r.um || "-"}</td>
-        <td>${r.cantidad || 0}</td>
-        <td>${r.ean_13 || "-"}</td>
-        <td>${r.valor_ean_13 || ""}</td>
-        <td>${r.inner_code || "-"}</td>
-        <td>${r.valor_inner || ""}</td>
-        <td>${r.ean_14 || "-"}</td>
-        <td>${r.valor_ean_14 || ""}</td>
-        <td style="font-weight: 900;">${r.um_min || "N1"}</td>
-        <td>${valPlan > 0 ? valPlan : ""}</td>
-        <td>${valReal > 0 ? valReal : ""}</td>
-        <td class="${clasePaleta}">${r.paleta || ""}</td>
-        <td class="${claseColorDif}">${valDif}</td>
-        <td>${r.comentario || ""}</td>
-        <td>${r.comentario_2 || ""}</td>
-        <td>${r.key || ""}</td>
-        <td class="${claseCondicion}">${r.condicion || ""}</td>
-      `;
-      reporteBody.appendChild(tr);
-    });
+        let clasePaleta = (r.paleta === "LPN NO COINCIDE") ? "estado-error" : "";
+        let claseCondicion = (r.condicion === "PRIORIDAD AUDITAR") ? "estado-warning" : "";
 
-    // CONTROL DINÁMICO DE BOTONES (Oculta/Muestra basado en lo que encuentre)
-    if (listaATrabajar === reporteActualEnMemoria) {
-      const btnF = document.getElementById("btnFiltroFaltante");
-      const btnS = document.getElementById("btnFiltroSobrante");
-      if(btnF) btnF.classList.toggle("oculto", !hayFaltantes);
-      if(btnS) btnS.classList.toggle("oculto", !haySobrantes);
+        tr.innerHTML = `
+          <td>${r.lpn || "-"}</td>
+          <td style="font-weight: bold;">${r.sku || "-"}</td>
+          <td>${r.descripcion || "-"}</td>
+          <td>${r.um || "-"}</td>
+          <td>${r.cantidad || 0}</td>
+          <td>${r.ean_13 || "-"}</td>
+          <td>${r.valor_ean_13 || ""}</td>
+          <td>${r.inner_code || "-"}</td>
+          <td>${r.valor_inner || ""}</td>
+          <td>${r.ean_14 || "-"}</td>
+          <td>${r.valor_ean_14 || ""}</td>
+          <td style="font-weight: 900;">${r.um_min || "N1"}</td>
+          <td>${valPlan > 0 ? valPlan : ""}</td>
+          <td>${valReal > 0 ? valReal : ""}</td>
+          <td class="${clasePaleta}">${r.paleta || ""}</td>
+          <td class="${claseColorDif}">${valDif}</td>
+          <td>${r.comentario || ""}</td>
+          <td>${r.comentario_2 || ""}</td>
+          <td>${r.key || ""}</td>
+          <td class="${claseCondicion}">${r.condicion || ""}</td>
+        `;
+        reporteBody.appendChild(tr);
+      });
+
+      // Solo evaluamos mostrar/ocultar botones si NO estamos filtrando (estado base)
+      if (!esFiltrado) {
+        const btnP = document.getElementById("btnFiltroPrioridad");
+        const btnF = document.getElementById("btnFiltroFaltante");
+        const btnS = document.getElementById("btnFiltroSobrante");
+        if(btnP) btnP.classList.toggle("oculto", !hayPrioridad);
+        if(btnF) btnF.classList.toggle("oculto", !hayFaltantes);
+        if(btnS) btnS.classList.toggle("oculto", !haySobrantes);
+      }
     }
 
-    // Recalcular KPIs GLOBALES (siempre se calcula en base a TODO, no al filtro)
+    // Recalcular KPIs GLOBALES (siempre sobre memoria total para no alterar el %)
     let totalPlanG = 0, totalRealG = 0;
     reporteActualEnMemoria.forEach(r => {
       let dif = calcularDiferenciaPredistribuido(r);
@@ -618,35 +618,78 @@ async function cargarReporteBase() {
     else kpiEfectividadBox.classList.add("bg-grad-green");
   }
 
-  // --- EVENTOS DE FILTROS ---
+  // --- ESTADO Y LÓGICA DE FILTROS APILABLES ---
+  let estadoFiltro = {
+    prioridad: false,
+    diferencia: null // puede ser 'faltante', 'sobrante' o null
+  };
+
+  function aplicarFiltrosMultiples() {
+    let resultado = reporteActualEnMemoria;
+
+    // Primero filtramos por PRIORIDAD (si está activo)
+    if (estadoFiltro.prioridad) {
+      resultado = resultado.filter(r => r.condicion === "PRIORIDAD AUDITAR");
+    }
+    
+    // Luego, SOBRE ESE RESULTADO, filtramos por Faltante/Sobrante (si están activos)
+    if (estadoFiltro.diferencia === "faltante") {
+      resultado = resultado.filter(r => calcularDiferenciaPredistribuido(r) < 0);
+    } else if (estadoFiltro.diferencia === "sobrante") {
+      resultado = resultado.filter(r => calcularDiferenciaPredistribuido(r) > 0);
+    }
+
+    renderizarReporteDinamico(resultado, true); // true = es un estado filtrado
+    
+    // Mostramos el botón "QUITAR FILTROS" si hay algún filtro activo
+    const btnTodos = document.getElementById("btnFiltroTodos");
+    if (btnTodos) {
+      if (estadoFiltro.prioridad || estadoFiltro.diferencia !== null) {
+        btnTodos.classList.remove("oculto");
+      } else {
+        btnTodos.classList.add("oculto");
+      }
+    }
+  }
+
+  // --- EVENTOS DE LOS BOTONES DE FILTRO ---
+  const btnFiltroPrioridad = document.getElementById("btnFiltroPrioridad");
   const btnFiltroFaltante = document.getElementById("btnFiltroFaltante");
   const btnFiltroSobrante = document.getElementById("btnFiltroSobrante");
   const btnFiltroTodos = document.getElementById("btnFiltroTodos");
 
+  if(btnFiltroPrioridad) {
+    btnFiltroPrioridad.addEventListener("click", () => {
+      estadoFiltro.prioridad = true;
+      aplicarFiltrosMultiples();
+    });
+  }
+
   if(btnFiltroFaltante) {
     btnFiltroFaltante.addEventListener("click", () => {
-      // Filtra estrictamente donde Diferencia sea menor a 0
-      const faltantes = reporteActualEnMemoria.filter(r => calcularDiferenciaPredistribuido(r) < 0);
-      renderizarReporteDinamico(faltantes);
-      btnFiltroTodos.classList.remove("oculto");
+      estadoFiltro.diferencia = "faltante";
+      aplicarFiltrosMultiples();
     });
   }
 
   if(btnFiltroSobrante) {
     btnFiltroSobrante.addEventListener("click", () => {
-      // Filtra estrictamente donde Diferencia sea mayor a 0
-      const sobrantes = reporteActualEnMemoria.filter(r => calcularDiferenciaPredistribuido(r) > 0);
-      renderizarReporteDinamico(sobrantes);
-      btnFiltroTodos.classList.remove("oculto");
+      estadoFiltro.diferencia = "sobrante";
+      aplicarFiltrosMultiples();
     });
   }
 
   if(btnFiltroTodos) {
     btnFiltroTodos.addEventListener("click", () => {
-      renderizarReporteDinamico(reporteActualEnMemoria); 
+      // Reiniciamos todas las variables de filtro
+      estadoFiltro.prioridad = false;
+      estadoFiltro.diferencia = null;
+      renderizarReporteDinamico(reporteActualEnMemoria, false); 
       btnFiltroTodos.classList.add("oculto");
     });
   }
+
+  // Utilidades Finales
   function normalizarLogo(logoUrl) {
     if (!logoUrl) return "../IMG/logo.png";
     return logoUrl.startsWith("IMG/") ? "../" + logoUrl : logoUrl;
@@ -662,7 +705,6 @@ async function cargarReporteBase() {
     if (loadingOverlay) loadingOverlay.classList.add("oculto"); 
   }
 
-  // --- LÍNEA AGREGADA AHORA ---
   function actualizarLoading(mensaje) {
     if (loadingText) loadingText.textContent = mensaje;
   }
