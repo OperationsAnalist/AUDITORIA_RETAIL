@@ -30,7 +30,7 @@ body {
   font-family: "Segoe UI", Arial, sans-serif;
   background:
     linear-gradient(rgba(10, 35, 66, 0.72), rgba(15, 76, 129, 0.72)),
-    url("./img/background.jpg") center center / cover no-repeat fixed;
+    url("./IMG/background.jpg") center center / cover no-repeat fixed;
   min-height: 100vh;
 }
 
