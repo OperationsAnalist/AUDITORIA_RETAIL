@@ -320,37 +320,48 @@ btnProcesar.addEventListener("click", async () => {
       const puedeProcesar = !!estado?.puede_procesar;
 
       queryCargadoActual = queryOk;
-// --- LÓGICA PARA MOSTRAR LA BURBUJA AZUL Y NOMBRES DE AUDITORES ---
+// --- LÓGICA PARA MOSTRAR LA BURBUJA DE CONTEOS EN TIEMPO REAL Y TOOLTIP ---
       let totalConteos = Number(estado?.conteos_guardados || 0);
+      const contenedorBadge = document.getElementById("contenedorBadgeConteo");
+      const lblAuditores = document.getElementById("lblAuditores");
 
       if (timelineBadgeConteo) {
         timelineBadgeConteo.textContent = totalConteos;
         
         if (totalConteos > 0) {
-          timelineBadgeConteo.classList.remove("oculto", "timeline-badge-red", "timeline-badge-green");
-          timelineBadgeConteo.classList.add("timeline-badge-blue"); // Se pinta de azul corporativo
+          if (contenedorBadge) contenedorBadge.classList.remove("oculto");
           
-          // Cambia texto de "Auditor:" o "Auditores:" dinámicamente
-          textoConteo.textContent = totalConteos === 1 ? "Auditor:" : "Auditores:";
+          timelineBadgeConteo.classList.remove("oculto", "timeline-badge-red", "timeline-badge-green");
+          timelineBadgeConteo.classList.add("timeline-badge-blue"); // Se pinta de Azul Corporativo
+          
+          // Asigna el texto "Auditor:" o "Auditores:" al nuevo label izquierdo
+          if (lblAuditores) lblAuditores.textContent = totalConteos === 1 ? "Auditor:" : "Auditores:";
 
-          // Obtenemos los nombres de la BD para mostrarlos al pasar el cursor (Tooltip)
-          if(window.supabase) {
-            const { data } = await window.supabase
-              .from('conteo_items')
-              .select('auditor_email')
-              .eq('client_id', cliente.id);
+          // Obtenemos los nombres usando la función que ya existe en tu api.js
+          try {
+            const data = await window.getConteoItems(cliente.id);
             
-            if(data && data.length > 0) {
+            if (data && data.length > 0) {
+              // Limpiamos el correo (ej: jcelisc@... -> JCELISC) y sacamos únicos
               const auditoresUnicos = [...new Set(data.map(d => (d.auditor_email || 'Auditor').split('@')[0].toUpperCase()))];
-              timelineBadgeConteo.title = auditoresUnicos.map((u, i) => `${i+1}. ${u}`).join("\n");
+              
+              // Armamos la lista para el Tooltip (Al pasar el mouse)
+              const tooltipHtml = auditoresUnicos.map((u, i) => `${i+1}. ${u}`).join("\n");
+              timelineBadgeConteo.title = tooltipHtml; // Insertamos en el Title Nativo
+            } else {
+              timelineBadgeConteo.title = "Auditores registrados"; 
             }
+          } catch (err) {
+            console.error("Error cargando nombres de auditores:", err);
+            timelineBadgeConteo.title = "Auditores registrados"; 
           }
         } else {
-          timelineBadgeConteo.classList.add("oculto");
-          textoConteo.textContent = "Pendiente";
+          if (contenedorBadge) contenedorBadge.classList.add("oculto");
+          timelineBadgeConteo.title = "Sin conteos";
         }
       }
 
+      // Mantiene el texto superior como "Pendiente" o "Registrado"
       pintarEstado(estadoQuery, textoQuery, queryOk, queryOk ? "Cargado" : "Pendiente");
       pintarEstado(estadoConteo, textoConteo, conteoOk, conteoOk ? "Registrado" : "Pendiente");
       pintarEstado(estadoProceso, textoProceso, puedeProcesar, puedeProcesar ? "Disponible" : "Bloqueado");

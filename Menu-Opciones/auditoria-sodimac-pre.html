@@ -47,13 +47,16 @@
       </div>
       <div class="timeline-line"></div>
 
-      <div class="timeline-item" id="estadoConteo">
+<div class="timeline-item" id="estadoConteo">
         <div class="timeline-dot"></div>
         <div>
           <strong>CONTEO</strong>
-          <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 5px; margin-top: 2px;">
-            <span id="textoConteo" style="margin-top: 0;">Pendiente</span>
-            <span id="timelineBadgeConteo" class="timeline-badge-red oculto" title="Auditores consolidados">0</span>
+          <span id="textoConteo" style="display: block; margin-top: 2px;">Pendiente</span>
+          
+          <!-- Contenedor nuevo que pone "Auditor:" y la "Burbuja" uno al lado del otro -->
+          <div id="contenedorBadgeConteo" class="oculto" style="display: flex; align-items: center; gap: 6px; margin-top: 6px;">
+            <span id="lblAuditores" style="font-size: 11px; color: #64748b; font-weight: 800; text-transform: uppercase;">Auditor:</span>
+            <span id="timelineBadgeConteo" class="timeline-badge-blue" title="Cargando auditores...">0</span>
           </div>
         </div>
       </div>
