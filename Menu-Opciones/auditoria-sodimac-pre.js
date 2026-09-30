@@ -48,12 +48,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     clienteLogo.onerror = () => { clienteLogo.src = "../IMG/logo.png"; };
   }
 
-  // --- INICIALIZACIÓN ---
+// --- INICIALIZACIÓN ---
   configurarPermisos();
   
   if (rol === "SUPERADMIN" && auditTrailBox) {
     auditTrailBox.classList.remove("oculto");
-    // cargarLogsCliente(); // TODO: Se habilitará cuando procesemos
+    cargarLogsCliente();
   }
 
   await cargarEstado();
@@ -112,9 +112,10 @@ try {
       actualizarLoading("Guardando en base de datos...");
       await window.insertarQueryItems(items);
 
-      // Auditoría
+// Auditoría
       if (typeof window.registrarLog === "function") {
         await window.registrarLog(`CLIENTE_${cliente.id}`, 'CARGA_QUERY', user?.nombre || user?.email || 'Desconocido');
+        if (rol === "SUPERADMIN") cargarLogsCliente();
       }
 
       await cargarEstado();
@@ -296,8 +297,10 @@ btnProcesar.addEventListener("click", async () => {
       
       renderizarReporteDinamico(); 
 
+// Auditoría
       if (typeof window.registrarLog === "function") {
-        await window.registrarLog(`CLIENTE_${cliente.id}`, 'PROCESAR', user?.nombre || user?.email || 'Desconocido');
+        await window.registrarLog(`CLIENTE_${cliente.id}`, 'CARGA_QUERY', user?.nombre || user?.email || 'Desconocido');
+        if (rol === "SUPERADMIN") cargarLogsCliente();
       }
 
       ocultarLoading();
@@ -709,7 +712,7 @@ async function cargarReporteBase() {
     if (loadingText) loadingText.textContent = mensaje;
   }
 
-  function mostrarModal(t, m, tipo="success") {
+function mostrarModal(t, m, tipo="success") {
     document.getElementById("appModalTitle").textContent = t;
     document.getElementById("appModalMessage").textContent = m;
     const icon = document.getElementById("appModalIcon");
@@ -718,5 +721,50 @@ async function cargarReporteBase() {
       icon.textContent = tipo==="success"?"✓":"!";
     }
     if (appModal) appModal.classList.remove("oculto");
+  }
+
+  // --- FUNCIONES DE AUDITORÍA PARA CLIENTE PREDISTRIBUIDO ---
+  async function cargarLogsCliente() {
+    try {
+      // El "modulo" será un ID único combinando el prefijo y el ID del cliente (Ej: CLIENTE_15)
+      const moduloId = `CLIENTE_${cliente.id}`;
+      const logs = await window.obtenerUltimosLogs(moduloId);
+
+      // Mapear logs individuales
+      const logQuery = logs.find(l => l.accion === 'CARGA_QUERY');
+      const logProcesar = logs.find(l => l.accion === 'PROCESAR');
+      const logDescargar = logs.find(l => l.accion === 'DESCARGAR');
+      const logReiniciar = logs.find(l => l.accion === 'REINICIAR');
+
+      // Pintar individuales
+      if(document.getElementById("lblLogQuery")) document.getElementById("lblLogQuery").textContent = formatoLog(logQuery);
+      if(document.getElementById("lblLogProcesar")) document.getElementById("lblLogProcesar").textContent = formatoLog(logProcesar);
+      if(document.getElementById("lblLogDescargar")) document.getElementById("lblLogDescargar").textContent = formatoLog(logDescargar);
+      if(document.getElementById("lblLogReiniciar")) document.getElementById("lblLogReiniciar").textContent = formatoLog(logReiniciar);
+
+      // Pintar los CONTEOS (pueden ser múltiples)
+      const logsConteos = logs.filter(l => l.accion === 'REGISTRO_CONTEO').reverse(); // Reverse para mostrar del 1 al N
+      const contenedorConteos = document.getElementById("contenedorLogsConteos");
+      
+      if(contenedorConteos) {
+        contenedorConteos.innerHTML = "";
+        logsConteos.forEach((log, index) => {
+          contenedorConteos.innerHTML += `
+            <div class="audit-item">
+              <span class="audit-label">Conteo ${index + 1}:</span> 
+              <span class="audit-value">${formatoLog(log)}</span>
+            </div>
+          `;
+        });
+      }
+
+    } catch (e) { console.error("Error cargando logs:", e); }
+  }
+
+  function formatoLog(log) {
+    if(!log) return "Sin registros";
+    const d = new Date(log.fecha);
+    const fechaF = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+    return `${log.usuario} - ${fechaF}`;
   }
 });
