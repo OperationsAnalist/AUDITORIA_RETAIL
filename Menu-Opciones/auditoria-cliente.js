@@ -647,22 +647,47 @@ function configurarPermisos() {
       if(btnS) btnS.classList.toggle("oculto", !haySobrantes);
     }
 
-    // Recalcular KPIs GLOBALES (siempre sobre la memoria completa)
-    let totalPlanG = 0, totalRealG = 0;
+// Recalcular KPIs GLOBALES (siempre sobre la memoria completa)
+    let totalUniverso = 0;   // Ítems en plan + Sobrantes nuevos
+    let totalPlanG = 0;      // Solo ítems en plan (para visualización del KPI azul)
+    let totalAuditados = 0;  // Ítems que sí se contaron (Avance)
+    let totalExactos = 0;    // Ítems contados SIN diferencias (Exactitud)
+
     reporteActualEnMemoria.forEach(r => {
       let dif = calcularDiferenciaMatematica(r);
-      let p = (Number(r.real) || 0) - dif;
-      if (p > 0) totalPlanG++;
-      if ((Number(r.real) || 0) > 0) totalRealG++;
+      let plan = (Number(r.real) || 0) - dif;
+      let real = Number(r.real) || 0;
+      
+      if (plan > 0) totalPlanG++; // Sirve solo para mostrar "117 ITEMS" en la cajita azul
+
+      // Análisis del Universo Real
+      if (plan > 0 || real > 0) {
+        totalUniverso++; 
+        
+        if (real > 0) {
+          totalAuditados++; // Suma al Avance
+          
+          if (dif === 0) {
+            totalExactos++; // Suma a la Exactitud
+          }
+        }
+      }
     });
 
     document.getElementById("kpiPlan").textContent = `${totalPlanG} ITEMS`;
-    document.getElementById("kpiReal").textContent = `${totalRealG} ITEMS`;
+    document.getElementById("kpiReal").textContent = `${totalAuditados} ITEMS`;
 
-    const efectividad = totalPlanG > 0 ? (totalRealG / totalPlanG) * 100 : 0;
+    // NUEVA FÓRMULA DE EFECTIVIDAD HÍBRIDA (50% Avance + 50% Exactitud)
+    let efectividad = 0;
+    if (totalUniverso > 0) {
+      const criterioAvance = (totalAuditados / totalUniverso) * 50; 
+      const criterioExactitud = (totalExactos / totalUniverso) * 50; 
+      efectividad = criterioAvance + criterioExactitud;
+    }
+
     const kpiEfectividadBox = document.getElementById("kpiEfectividadBox");
-    
     document.getElementById("kpiEfectividad").textContent = `${efectividad.toFixed(2)}%`;
+
     kpiEfectividadBox.classList.remove("bg-grad-red", "bg-grad-yellow", "bg-grad-green", "bg-red");
     if (efectividad < 60) kpiEfectividadBox.classList.add("bg-grad-red");
     else if (efectividad < 90) kpiEfectividadBox.classList.add("bg-grad-yellow");
