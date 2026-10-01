@@ -57,64 +57,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   await cargarEstado();
-
-  // --- BOTÓN DESCARGAR (EXCEL 3 HOJAS) PARA PREDISTRIBUIDO ---
-  if (btnDescargar) {
-    btnDescargar.addEventListener("click", async () => {
-      try {
-        mostrarLoading("Generando Excel", "Compilando hojas de Query, Conteo y Reporte...");
-
-        // 1. Crear Libro de Excel
-        const wb = XLSX.utils.book_new();
-
-        // 2. Hoja: QUERY (Mapeo Predistribuido)
-        const dataQuery = await window.getQueryItems(cliente.id);
-        const wsQuery = XLSX.utils.json_to_sheet(dataQuery.map(q => ({
-          "LPN": String(q.columna_e || ""), 
-          "SKU (SN)": String(q.sku || ""),
-          "Descripción": q.descripcion || "",
-          "UM": q.um || "",
-          "Cantidad": Number(q.cantidad) || 0
-        })));
-        XLSX.utils.book_append_sheet(wb, wsQuery, "QUERY");
-
-        // 3. Hoja: CONTEO (Mapeo Predistribuido)
-        const dataConteo = await window.getConteoItems(cliente.id);
-        const wsConteo = XLSX.utils.json_to_sheet(dataConteo.map(c => ({
-          "Auditor": c.auditor_email || "",
-          "Paleta": String(c.bulto || ""),
-          "LPN": String(c.tienda || ""), 
-          "EAN": String(c.ean || ""),
-          "Cantidad": Number(c.cantidad) || 0
-        })));
-        XLSX.utils.book_append_sheet(wb, wsConteo, "CONTEO");
-
-        // 4. Hoja: REPORTE (Se extrae directo de la tabla HTML dibujada)
-        const tablaHtml = document.querySelector(".tabla-scroll table");
-        const wsReporte = XLSX.utils.table_to_sheet(tablaHtml);
-        XLSX.utils.book_append_sheet(wb, wsReporte, "Reporte");
-
-        // 5. Descargar archivo
-        const hoy = new Date();
-        const dia = String(hoy.getDate()).padStart(2, '0');
-        const mes = String(hoy.getMonth() + 1).padStart(2, '0');
-        const nombreArchivo = `${dia}-${mes} Reporte Predistribuido ${cliente.nombre}.xlsx`;
-
-        XLSX.writeFile(wb, nombreArchivo);
-        ocultarLoading();
-
-        // Registrar Auditoría
-        if (typeof window.registrarLog === "function") {
-          await window.registrarLog(`CLIENTE_${cliente.id}`, 'DESCARGAR', user?.nombre || user?.email || 'Desconocido');
-          if (rol === "SUPERADMIN") cargarLogsCliente();
-        }
-      } catch (error) {
-        console.error(error);
-        ocultarLoading();
-        mostrarModal("Error", "No se pudo generar el Excel: " + error.message, "error");
-      }
-    });
-  }
+  
   // --- EVENTOS PREDISTRIBUIDO ---
   btnCargarQuery.addEventListener("click", () => {
     inputQueryExcel.click();
@@ -564,7 +507,11 @@ async function cargarReporteBase() {
 // Llamar a la tabla base al iniciar (después de cargarEstado)
   cargarReporteBase();
 
-// Función matemática unificada para calcular la diferencia
+// =================================================================================
+  // REEMPLAZO DESDE AQUÍ HASTA EL FINAL DEL ARCHIVO (Línea 541 en adelante aprox.)
+  // =================================================================================
+
+  // Función matemática unificada para calcular la diferencia
   function calcularDiferenciaPredistribuido(r) {
     let cantidad = Number(r.cantidad) || 0;
     let valorInner = Number(r.valor_inner) || 1;
@@ -593,9 +540,8 @@ async function cargarReporteBase() {
     reporteBody.innerHTML = "";
 
     if (listaATrabajar.length === 0) {
-      reporteBody.innerHTML = `<tr><td colspan="20" style="text-align:center;">No hay resultados para esta combinación de filtros.</td></tr>`;
+      reporteBody.innerHTML = `<tr><td colspan="20" style="text-align:center; font-weight: bold;">No hay resultados para esta combinación de filtros.</td></tr>`;
     } else {
-      // Variables para controlar qué botones dinámicos mostrar
       let hayFaltantes = false;
       let haySobrantes = false;
       let hayPrioridad = false;
@@ -620,39 +566,40 @@ async function cargarReporteBase() {
         let clasePaleta = (r.paleta === "LPN NO COINCIDE") ? "estado-error" : "";
         let claseCondicion = (r.condicion === "PRIORIDAD AUDITAR") ? "estado-warning" : "";
 
+        // ¡EL ATRIBUTO t="s" OBLIGA A EXCEL A EXPORTAR COMO TEXTO Y NO COMO NÚMERO CIENTÍFICO!
         tr.innerHTML = `
-          <td>${r.lpn || "-"}</td>
-          <td style="font-weight: bold;">${r.sku || "-"}</td>
+          <td t="s">${r.lpn || "-"}</td>
+          <td t="s" style="font-weight: bold;">${r.sku || "-"}</td>
           <td>${r.descripcion || "-"}</td>
           <td>${r.um || "-"}</td>
           <td>${r.cantidad || 0}</td>
-          <td>${r.ean_13 || "-"}</td>
+          <td t="s">${r.ean_13 || "-"}</td>
           <td>${r.valor_ean_13 || ""}</td>
-          <td>${r.inner_code || "-"}</td>
+          <td t="s">${r.inner_code || "-"}</td>
           <td>${r.valor_inner || ""}</td>
-          <td>${r.ean_14 || "-"}</td>
+          <td t="s">${r.ean_14 || "-"}</td>
           <td>${r.valor_ean_14 || ""}</td>
           <td style="font-weight: 900;">${r.um_min || "N1"}</td>
           <td>${valPlan > 0 ? valPlan : ""}</td>
           <td>${valReal > 0 ? valReal : ""}</td>
-          <td class="${clasePaleta}">${r.paleta || ""}</td>
+          <td t="s" class="${clasePaleta}">${r.paleta || ""}</td>
           <td class="${claseColorDif}">${valDif}</td>
           <td>${r.comentario || ""}</td>
           <td>${r.comentario_2 || ""}</td>
-          <td>${r.key || ""}</td>
-          <td class="${claseCondicion}">${r.condicion || ""}</td>
+          <td t="s">${r.key || ""}</td>
+          <td t="s" class="${claseCondicion}">${r.condicion || ""}</td>
         `;
         reporteBody.appendChild(tr);
       });
 
-      // Solo evaluamos mostrar/ocultar botones si NO estamos filtrando (estado base)
+      // Solo evaluamos mostrar/ocultar botones base si NO estamos filtrando
       if (!esFiltrado) {
         const btnP = document.getElementById("btnFiltroPrioridad");
         const btnF = document.getElementById("btnFiltroFaltante");
         const btnS = document.getElementById("btnFiltroSobrante");
-        if(btnP) btnP.classList.toggle("oculto", !hayPrioridad);
-        if(btnF) btnF.classList.toggle("oculto", !hayFaltantes);
-        if(btnS) btnS.classList.toggle("oculto", !haySobrantes);
+        if(btnP) { btnP.classList.toggle("oculto", !hayPrioridad); btnP.style.opacity = "1"; }
+        if(btnF) { btnF.classList.toggle("oculto", !hayFaltantes); btnF.style.opacity = "1"; }
+        if(btnS) { btnS.classList.toggle("oculto", !haySobrantes); btnS.style.opacity = "1"; }
       }
     }
 
@@ -681,18 +628,18 @@ async function cargarReporteBase() {
   // --- ESTADO Y LÓGICA DE FILTROS APILABLES ---
   let estadoFiltro = {
     prioridad: false,
-    diferencia: null // puede ser 'faltante', 'sobrante' o null
+    diferencia: null // "faltante", "sobrante", o null
   };
 
   function aplicarFiltrosMultiples() {
     let resultado = reporteActualEnMemoria;
 
-    // 1. Aplicamos el Filtro PRIORIDAD primero
+    // 1. Filtrar por PRIORIDAD
     if (estadoFiltro.prioridad) {
       resultado = resultado.filter(r => r.condicion === "PRIORIDAD AUDITAR");
     }
     
-    // 2. Evaluamos qué botones de diferencia mostrar BASADO en la nueva lista reducida
+    // 2. Evaluamos dinámicamente si mostrar Faltantes/Sobrantes basado en la lista reducida
     let hayF = false;
     let hayS = false;
     resultado.forEach(r => {
@@ -703,14 +650,25 @@ async function cargarReporteBase() {
 
     const btnF = document.getElementById("btnFiltroFaltante");
     const btnS = document.getElementById("btnFiltroSobrante");
-    if (btnF) btnF.classList.toggle("oculto", !hayF);
-    if (btnS) btnS.classList.toggle("oculto", !hayS);
+    const btnP = document.getElementById("btnFiltroPrioridad");
 
-    // Si había un filtro de diferencia activo pero la lista reducida ya no tiene esos errores, lo apagamos
+    if (btnF) {
+      btnF.classList.toggle("oculto", !hayF);
+      btnF.style.opacity = estadoFiltro.diferencia === "faltante" ? "0.5" : "1";
+    }
+    if (btnS) {
+      btnS.classList.toggle("oculto", !hayS);
+      btnS.style.opacity = estadoFiltro.diferencia === "sobrante" ? "0.5" : "1";
+    }
+    if (btnP) {
+      btnP.style.opacity = estadoFiltro.prioridad ? "0.5" : "1";
+    }
+
+    // Si había un filtro activo pero la lista reducida ya no tiene esos errores, lo apagamos
     if (estadoFiltro.diferencia === "faltante" && !hayF) estadoFiltro.diferencia = null;
     if (estadoFiltro.diferencia === "sobrante" && !hayS) estadoFiltro.diferencia = null;
 
-    // 3. Aplicamos Filtro DIFERENCIA (Sobrante/Faltante) sobre la lista ya filtrada
+    // 3. Aplicamos Filtro DIFERENCIA
     if (estadoFiltro.diferencia === "faltante") {
       resultado = resultado.filter(r => calcularDiferenciaPredistribuido(r) < 0);
     } else if (estadoFiltro.diferencia === "sobrante") {
@@ -719,6 +677,7 @@ async function cargarReporteBase() {
 
     renderizarReporteDinamico(resultado, true); 
     
+    // Mostramos el botón "QUITAR FILTROS"
     const btnTodos = document.getElementById("btnFiltroTodos");
     if (btnTodos) {
       if (estadoFiltro.prioridad || estadoFiltro.diferencia !== null) {
@@ -728,72 +687,125 @@ async function cargarReporteBase() {
       }
     }
   }
-  // Utilidades Finales
-  function normalizarLogo(logoUrl) {
-    if (!logoUrl) return "../IMG/logo.png";
-    return logoUrl.startsWith("IMG/") ? "../" + logoUrl : logoUrl;
+
+  // --- EVENTOS DE LOS BOTONES DE FILTRO ---
+  const btnFiltroPrioridad = document.getElementById("btnFiltroPrioridad");
+  const btnFiltroFaltante = document.getElementById("btnFiltroFaltante");
+  const btnFiltroSobrante = document.getElementById("btnFiltroSobrante");
+  const btnFiltroTodos = document.getElementById("btnFiltroTodos");
+
+  if(btnFiltroPrioridad) {
+    btnFiltroPrioridad.addEventListener("click", () => {
+      estadoFiltro.prioridad = !estadoFiltro.prioridad; // Funciona como interruptor
+      aplicarFiltrosMultiples();
+    });
   }
 
-  function mostrarLoading(t, m) {
-    if (loadingTitle) loadingTitle.textContent = t;
-    if (loadingText) loadingText.textContent = m;
-    if (loadingOverlay) loadingOverlay.classList.remove("oculto");
+  if(btnFiltroFaltante) {
+    btnFiltroFaltante.addEventListener("click", () => {
+      estadoFiltro.diferencia = estadoFiltro.diferencia === "faltante" ? null : "faltante";
+      aplicarFiltrosMultiples();
+    });
   }
 
-  function ocultarLoading() { 
-    if (loadingOverlay) loadingOverlay.classList.add("oculto"); 
+  if(btnFiltroSobrante) {
+    btnFiltroSobrante.addEventListener("click", () => {
+      estadoFiltro.diferencia = estadoFiltro.diferencia === "sobrante" ? null : "sobrante";
+      aplicarFiltrosMultiples();
+    });
   }
 
-  function actualizarLoading(mensaje) {
-    if (loadingText) loadingText.textContent = mensaje;
+  if(btnFiltroTodos) {
+    btnFiltroTodos.addEventListener("click", () => {
+      estadoFiltro.prioridad = false;
+      estadoFiltro.diferencia = null;
+      aplicarFiltrosMultiples(); 
+    });
   }
 
-function mostrarModal(t, m, tipo="success") {
-    document.getElementById("appModalTitle").textContent = t;
-    document.getElementById("appModalMessage").textContent = m;
-    const icon = document.getElementById("appModalIcon");
-    if(icon){
-      icon.className = `app-modal-icon ${tipo}`;
-      icon.textContent = tipo==="success"?"✓":"!";
-    }
-    if (appModal) appModal.classList.remove("oculto");
+  // --- BOTÓN DESCARGAR (EXCEL) PARA PREDISTRIBUIDO ---
+  if (btnDescargar) {
+    btnDescargar.addEventListener("click", async () => {
+      try {
+        mostrarLoading("Generando Excel", "Compilando hojas...");
+
+        const wb = XLSX.utils.book_new();
+
+        const dataQuery = await window.getQueryItems(cliente.id);
+        const wsQuery = XLSX.utils.json_to_sheet(dataQuery.map(q => ({
+          "LPN": String(q.columna_e || ""), 
+          "SKU (SN)": String(q.sku || ""),
+          "Descripción": q.descripcion || "",
+          "UM": q.um || "",
+          "Cantidad": Number(q.cantidad) || 0
+        })));
+        XLSX.utils.book_append_sheet(wb, wsQuery, "QUERY");
+
+        const dataConteo = await window.getConteoItems(cliente.id);
+        const wsConteo = XLSX.utils.json_to_sheet(dataConteo.map(c => ({
+          "Auditor": c.auditor_email || "",
+          "Paleta": String(c.bulto || ""),
+          "LPN": String(c.tienda || ""), 
+          "EAN": String(c.ean || ""),
+          "Cantidad": Number(c.cantidad) || 0
+        })));
+        XLSX.utils.book_append_sheet(wb, wsConteo, "CONTEO");
+
+        const tablaHtml = document.querySelector(".tabla-scroll table");
+        // sheetJS lee el atributo t="s" que agregamos en el HTML para forzar texto puro
+        const wsReporte = XLSX.utils.table_to_sheet(tablaHtml, { raw: false }); 
+        XLSX.utils.book_append_sheet(wb, wsReporte, "Reporte");
+
+        const hoy = new Date();
+        const dia = String(hoy.getDate()).padStart(2, '0');
+        const mes = String(hoy.getMonth() + 1).padStart(2, '0');
+        const nombreArchivo = `${dia}-${mes} Reporte Predistribuido ${cliente.nombre}.xlsx`;
+
+        XLSX.writeFile(wb, nombreArchivo);
+        ocultarLoading();
+
+        if (typeof window.registrarLog === "function") {
+          await window.registrarLog(`CLIENTE_${cliente.id}`, 'DESCARGAR', user?.nombre || user?.email || 'Desconocido');
+          if (rol === "SUPERADMIN") cargarLogsCliente();
+        }
+      } catch (error) {
+        console.error(error);
+        ocultarLoading();
+        mostrarModal("Error", "No se pudo generar el Excel: " + error.message, "error");
+      }
+    });
   }
+
+  // --- Utilidades Finales ---
+  function normalizarLogo(logoUrl) { return !logoUrl ? "../IMG/logo.png" : (logoUrl.startsWith("IMG/") ? "../" + logoUrl : logoUrl); }
+  function mostrarLoading(t, m) { if(loadingTitle) loadingTitle.textContent = t; if(loadingText) loadingText.textContent = m; if(loadingOverlay) loadingOverlay.classList.remove("oculto"); }
+  function ocultarLoading() { if(loadingOverlay) loadingOverlay.classList.add("oculto"); }
+  function actualizarLoading(mensaje) { if(loadingText) loadingText.textContent = mensaje; }
+  function mostrarModal(t, m, tipo="success") { document.getElementById("appModalTitle").textContent = t; document.getElementById("appModalMessage").textContent = m; const icon = document.getElementById("appModalIcon"); if(icon){ icon.className = `app-modal-icon ${tipo}`; icon.textContent = tipo==="success"?"✓":"!"; } if (appModal) appModal.classList.remove("oculto"); }
 
   // --- FUNCIONES DE AUDITORÍA PARA CLIENTE PREDISTRIBUIDO ---
   async function cargarLogsCliente() {
     try {
-      // El "modulo" será un ID único combinando el prefijo y el ID del cliente (Ej: CLIENTE_15)
       const moduloId = `CLIENTE_${cliente.id}`;
       const logs = await window.obtenerUltimosLogs(moduloId);
-
-      // Mapear logs individuales
       const logQuery = logs.find(l => l.accion === 'CARGA_QUERY');
       const logProcesar = logs.find(l => l.accion === 'PROCESAR');
       const logDescargar = logs.find(l => l.accion === 'DESCARGAR');
       const logReiniciar = logs.find(l => l.accion === 'REINICIAR');
 
-      // Pintar individuales
       if(document.getElementById("lblLogQuery")) document.getElementById("lblLogQuery").textContent = formatoLog(logQuery);
       if(document.getElementById("lblLogProcesar")) document.getElementById("lblLogProcesar").textContent = formatoLog(logProcesar);
       if(document.getElementById("lblLogDescargar")) document.getElementById("lblLogDescargar").textContent = formatoLog(logDescargar);
       if(document.getElementById("lblLogReiniciar")) document.getElementById("lblLogReiniciar").textContent = formatoLog(logReiniciar);
 
-      // Pintar los CONTEOS (pueden ser múltiples)
-      const logsConteos = logs.filter(l => l.accion === 'REGISTRO_CONTEO').reverse(); // Reverse para mostrar del 1 al N
+      const logsConteos = logs.filter(l => l.accion === 'REGISTRO_CONTEO').reverse(); 
       const contenedorConteos = document.getElementById("contenedorLogsConteos");
-      
       if(contenedorConteos) {
         contenedorConteos.innerHTML = "";
         logsConteos.forEach((log, index) => {
-          contenedorConteos.innerHTML += `
-            <div class="audit-item">
-              <span class="audit-label">Conteo ${index + 1}:</span> 
-              <span class="audit-value">${formatoLog(log)}</span>
-            </div>
-          `;
+          contenedorConteos.innerHTML += `<div class="audit-item"><span class="audit-label">Conteo ${index + 1}:</span> <span class="audit-value">${formatoLog(log)}</span></div>`;
         });
       }
-
     } catch (e) { console.error("Error cargando logs:", e); }
   }
 
