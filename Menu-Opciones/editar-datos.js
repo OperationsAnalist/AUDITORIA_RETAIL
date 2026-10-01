@@ -192,15 +192,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // --- BUSCADORES ---
+// --- BUSCADORES ---
   buscarQuery.addEventListener("input", (e) => {
     const text = e.target.value.toLowerCase();
-    const filtrado = dataQuery.filter(r => (r.sku || "").toLowerCase().includes(text) || (r.descripcion || "").toLowerCase().includes(text));
+    const filtrado = dataQuery.filter(r => 
+      (r.sku || "").toLowerCase().includes(text) || 
+      (r.descripcion || "").toLowerCase().includes(text) ||
+      (r.columna_e || "").toLowerCase().includes(text) // Añadida búsqueda por LPN en Query
+    );
     renderQuery(filtrado);
   });
+  
   buscarConteo.addEventListener("input", (e) => {
     const text = e.target.value.toLowerCase();
-    const filtrado = dataConteo.filter(r => (r.ean || "").toLowerCase().includes(text) || (r.bulto || "").toLowerCase().includes(text));
+    const filtrado = dataConteo.filter(r => 
+      (r.ean || "").toLowerCase().includes(text) || 
+      (r.bulto || "").toLowerCase().includes(text) ||
+      (r.tienda || "").toLowerCase().includes(text) // Añadida búsqueda por LPN (Tienda) en Conteo
+    );
     renderConteo(filtrado);
   });
 

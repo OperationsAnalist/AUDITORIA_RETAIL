@@ -57,7 +57,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   await cargarEstado();
-  
+
   // --- EVENTOS PREDISTRIBUIDO ---
   btnCargarQuery.addEventListener("click", () => {
     inputQueryExcel.click();
@@ -291,13 +291,38 @@ btnProcesar.addEventListener("click", async () => {
         }
       });
 
-      // LÍNEAS NUEVAS: Guarda en memoria persistente
+// LÍNEAS NUEVAS: Guarda en memoria persistente local
       reporteActualEnMemoria = reporte;
       localStorage.setItem(`reportePredi_${cliente.id}`, JSON.stringify(reporte));
       
+      // ¡NUEVO! SUBIR A LA NUBE: Mapeamos los datos para la tabla genérica de Supabase
+      actualizarLoading("Guardando en la nube...");
+      const payloadDB = reporte.map((r, i) => ({
+        client_id: cliente.id,
+        nro: i + 1,
+        columna_b: r.lpn,
+        sku: r.sku,
+        descripcion: r.descripcion,
+        um: r.um,
+        cantidad: r.cantidad,
+        ean_13: r.ean_13,
+        valor_ean_13: r.valor_ean_13,
+        inner_code: r.inner_code,
+        valor_inner: r.valor_inner,
+        ean_14: r.ean_14,
+        valor_ean_14: r.valor_ean_14,
+        um_min: r.um_min,
+        plan: r.plan,
+        real: r.real,
+        ubicacion: r.paleta,      // Guardamos la Paleta aquí
+        comentario: r.condicion,  // Guardamos la Condición Prioridad aquí
+        comentario_2: r.key       // Guardamos la Key aquí
+      }));
+      await window.guardarReporteJS(cliente.id, payloadDB);
+
       renderizarReporteDinamico(); 
 
-// Auditoría
+      // Auditoría
       if (typeof window.registrarLog === "function") {
         await window.registrarLog(`CLIENTE_${cliente.id}`, 'CARGA_QUERY', user?.nombre || user?.email || 'Desconocido');
         if (rol === "SUPERADMIN") cargarLogsCliente();
@@ -463,18 +488,41 @@ btnProcesar.addEventListener("click", async () => {
     return Array.from(mapAgrupado.values());
   }
 
-  // --- RENDERIZAR TABLA (FASE 1: SOLO MUESTRA EL QUERY) ---
-async function cargarReporteBase() {
+// --- RENDERIZAR TABLA (LEE SIEMPRE DE LA NUBE PARA SINCRONIZAR USUARIOS) ---
+  async function cargarReporteBase() {
     try {
-      // 1. REVISA SI YA HAY UN REPORTE PROCESADO Y GUARDADO EN ESTA MÁQUINA
-      const reporteGuardado = localStorage.getItem(`reportePredi_${cliente.id}`);
-      if (reporteGuardado) {
-        reporteActualEnMemoria = JSON.parse(reporteGuardado);
+      // 1. OBTENER DESDE LA NUBE PRIMERO
+      const dataDB = await window.getReporteCliente(cliente.id);
+      
+      if (dataDB && dataDB.length > 0) {
+        // Transformamos el formato genérico de la BD de vuelta a nuestro formato Predistribuido
+        reporteActualEnMemoria = dataDB.map(d => ({
+          lpn: d.columna_b,
+          sku: d.sku,
+          descripcion: d.descripcion,
+          um: d.um,
+          cantidad: d.cantidad,
+          ean_13: d.ean_13,
+          valor_ean_13: d.valor_ean_13,
+          inner_code: d.inner_code,
+          valor_inner: d.valor_inner,
+          ean_14: d.ean_14,
+          valor_ean_14: d.valor_ean_14,
+          um_min: d.um_min,
+          plan: d.plan,
+          real: d.real,
+          paleta: d.ubicacion,
+          condicion: d.comentario,
+          key: d.comentario_2
+        }));
+        
+        // Refrescamos la memoria local por si acaso y dibujamos
+        localStorage.setItem(`reportePredi_${cliente.id}`, JSON.stringify(reporteActualEnMemoria));
         renderizarReporteDinamico();
-        return; // Detiene la función aquí, ya que recuperó el estado procesado
+        return; 
       }
 
-      // 2. SI NO HAY NADA GUARDADO, DIBUJA EL QUERY BASE (Cascarón)
+      // 2. SI LA NUBE ESTÁ VACÍA (Aún no le dan a procesar), dibuja el cascarón de Query
       const dataQuery = await window.getQueryItems(cliente.id);
       
       if (!dataQuery || dataQuery.length === 0) {

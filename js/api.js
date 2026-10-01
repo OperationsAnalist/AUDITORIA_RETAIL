@@ -643,5 +643,32 @@ window.insertarConteoItem = async function (payload) {
     if (!response.ok) throw new Error("Error insertando nueva fila en Conteo.");
   };
 
+window.guardarReporteJS = async function (clientId, items) {
+    // 1. Limpiar reporte actual en la nube
+    await fetch(`${SUPABASE_URL}/rest/v1/reporte_items?client_id=eq.${clientId}`, {
+      method: "DELETE",
+      headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}` }
+    });
+
+    // 2. Insertar los nuevos cálculos en lotes de 500
+    const chunkSize = 500;
+    for (let i = 0; i < items.length; i += chunkSize) {
+      const chunk = items.slice(i, i + chunkSize);
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/reporte_items`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json", 
+          "apikey": SUPABASE_ANON_KEY, 
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, 
+          "Prefer": "return=minimal" 
+        },
+        body: JSON.stringify(chunk)
+      });
+      if (!response.ok) {
+        throw new Error("Error guardando reporte en Nube: " + await response.text());
+      }
+    }
+  };
+
 })(); 
 
