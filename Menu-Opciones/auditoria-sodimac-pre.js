@@ -58,6 +58,63 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   await cargarEstado();
 
+  // --- BOTÓN DESCARGAR (EXCEL 3 HOJAS) PARA PREDISTRIBUIDO ---
+  if (btnDescargar) {
+    btnDescargar.addEventListener("click", async () => {
+      try {
+        mostrarLoading("Generando Excel", "Compilando hojas de Query, Conteo y Reporte...");
+
+        // 1. Crear Libro de Excel
+        const wb = XLSX.utils.book_new();
+
+        // 2. Hoja: QUERY (Mapeo Predistribuido)
+        const dataQuery = await window.getQueryItems(cliente.id);
+        const wsQuery = XLSX.utils.json_to_sheet(dataQuery.map(q => ({
+          "LPN": String(q.columna_e || ""), 
+          "SKU (SN)": String(q.sku || ""),
+          "Descripción": q.descripcion || "",
+          "UM": q.um || "",
+          "Cantidad": Number(q.cantidad) || 0
+        })));
+        XLSX.utils.book_append_sheet(wb, wsQuery, "QUERY");
+
+        // 3. Hoja: CONTEO (Mapeo Predistribuido)
+        const dataConteo = await window.getConteoItems(cliente.id);
+        const wsConteo = XLSX.utils.json_to_sheet(dataConteo.map(c => ({
+          "Auditor": c.auditor_email || "",
+          "Paleta": String(c.bulto || ""),
+          "LPN": String(c.tienda || ""), 
+          "EAN": String(c.ean || ""),
+          "Cantidad": Number(c.cantidad) || 0
+        })));
+        XLSX.utils.book_append_sheet(wb, wsConteo, "CONTEO");
+
+        // 4. Hoja: REPORTE (Se extrae directo de la tabla HTML dibujada)
+        const tablaHtml = document.querySelector(".tabla-scroll table");
+        const wsReporte = XLSX.utils.table_to_sheet(tablaHtml);
+        XLSX.utils.book_append_sheet(wb, wsReporte, "Reporte");
+
+        // 5. Descargar archivo
+        const hoy = new Date();
+        const dia = String(hoy.getDate()).padStart(2, '0');
+        const mes = String(hoy.getMonth() + 1).padStart(2, '0');
+        const nombreArchivo = `${dia}-${mes} Reporte Predistribuido ${cliente.nombre}.xlsx`;
+
+        XLSX.writeFile(wb, nombreArchivo);
+        ocultarLoading();
+
+        // Registrar Auditoría
+        if (typeof window.registrarLog === "function") {
+          await window.registrarLog(`CLIENTE_${cliente.id}`, 'DESCARGAR', user?.nombre || user?.email || 'Desconocido');
+          if (rol === "SUPERADMIN") cargarLogsCliente();
+        }
+      } catch (error) {
+        console.error(error);
+        ocultarLoading();
+        mostrarModal("Error", "No se pudo generar el Excel: " + error.message, "error");
+      }
+    });
+  }
   // --- EVENTOS PREDISTRIBUIDO ---
   btnCargarQuery.addEventListener("click", () => {
     inputQueryExcel.click();
@@ -630,21 +687,38 @@ async function cargarReporteBase() {
   function aplicarFiltrosMultiples() {
     let resultado = reporteActualEnMemoria;
 
-    // Primero filtramos por PRIORIDAD (si está activo)
+    // 1. Aplicamos el Filtro PRIORIDAD primero
     if (estadoFiltro.prioridad) {
       resultado = resultado.filter(r => r.condicion === "PRIORIDAD AUDITAR");
     }
     
-    // Luego, SOBRE ESE RESULTADO, filtramos por Faltante/Sobrante (si están activos)
+    // 2. Evaluamos qué botones de diferencia mostrar BASADO en la nueva lista reducida
+    let hayF = false;
+    let hayS = false;
+    resultado.forEach(r => {
+      let dif = calcularDiferenciaPredistribuido(r);
+      if (dif < 0) hayF = true;
+      if (dif > 0) hayS = true;
+    });
+
+    const btnF = document.getElementById("btnFiltroFaltante");
+    const btnS = document.getElementById("btnFiltroSobrante");
+    if (btnF) btnF.classList.toggle("oculto", !hayF);
+    if (btnS) btnS.classList.toggle("oculto", !hayS);
+
+    // Si había un filtro de diferencia activo pero la lista reducida ya no tiene esos errores, lo apagamos
+    if (estadoFiltro.diferencia === "faltante" && !hayF) estadoFiltro.diferencia = null;
+    if (estadoFiltro.diferencia === "sobrante" && !hayS) estadoFiltro.diferencia = null;
+
+    // 3. Aplicamos Filtro DIFERENCIA (Sobrante/Faltante) sobre la lista ya filtrada
     if (estadoFiltro.diferencia === "faltante") {
       resultado = resultado.filter(r => calcularDiferenciaPredistribuido(r) < 0);
     } else if (estadoFiltro.diferencia === "sobrante") {
       resultado = resultado.filter(r => calcularDiferenciaPredistribuido(r) > 0);
     }
 
-    renderizarReporteDinamico(resultado, true); // true = es un estado filtrado
+    renderizarReporteDinamico(resultado, true); 
     
-    // Mostramos el botón "QUITAR FILTROS" si hay algún filtro activo
     const btnTodos = document.getElementById("btnFiltroTodos");
     if (btnTodos) {
       if (estadoFiltro.prioridad || estadoFiltro.diferencia !== null) {
@@ -654,44 +728,6 @@ async function cargarReporteBase() {
       }
     }
   }
-
-  // --- EVENTOS DE LOS BOTONES DE FILTRO ---
-  const btnFiltroPrioridad = document.getElementById("btnFiltroPrioridad");
-  const btnFiltroFaltante = document.getElementById("btnFiltroFaltante");
-  const btnFiltroSobrante = document.getElementById("btnFiltroSobrante");
-  const btnFiltroTodos = document.getElementById("btnFiltroTodos");
-
-  if(btnFiltroPrioridad) {
-    btnFiltroPrioridad.addEventListener("click", () => {
-      estadoFiltro.prioridad = true;
-      aplicarFiltrosMultiples();
-    });
-  }
-
-  if(btnFiltroFaltante) {
-    btnFiltroFaltante.addEventListener("click", () => {
-      estadoFiltro.diferencia = "faltante";
-      aplicarFiltrosMultiples();
-    });
-  }
-
-  if(btnFiltroSobrante) {
-    btnFiltroSobrante.addEventListener("click", () => {
-      estadoFiltro.diferencia = "sobrante";
-      aplicarFiltrosMultiples();
-    });
-  }
-
-  if(btnFiltroTodos) {
-    btnFiltroTodos.addEventListener("click", () => {
-      // Reiniciamos todas las variables de filtro
-      estadoFiltro.prioridad = false;
-      estadoFiltro.diferencia = null;
-      renderizarReporteDinamico(reporteActualEnMemoria, false); 
-      btnFiltroTodos.classList.add("oculto");
-    });
-  }
-
   // Utilidades Finales
   function normalizarLogo(logoUrl) {
     if (!logoUrl) return "../IMG/logo.png";
