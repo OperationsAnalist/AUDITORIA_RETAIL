@@ -33,6 +33,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const reporteBody = document.getElementById("reporteBody");
 
   let queryCargadoActual = false;
+  let reporteDescargado = false; // NUEVO: Candado de seguridad
   let reporteActualEnMemoria = [];
 
   // Modales
@@ -170,11 +171,58 @@ btnRegistrarConteo.addEventListener("click", () => {
     });
   }
 
-  // Ocultamos permanentemente el botón FORZAR N1 para Predistribuido
+// Ocultamos permanentemente el botón FORZAR N1 para Predistribuido
   if (btnForzarN1) {
     btnForzarN1.style.display = "none";
   }
 
+  // --- BOTÓN REINICIAR (CON CANDADO DE SEGURIDAD) ---
+  if (btnReiniciar) {
+    btnReiniciar.addEventListener("click", async () => {
+      // 1. Validar el candado: Si la tabla ya fue procesada, exigir descarga previa
+      if (reporteActualEnMemoria.length > 0 && !reporteDescargado) {
+        mostrarModal("Descarga Requerida", "Por seguridad, debes hacer clic en 'DESCARGAR' para guardar el reporte final antes de reiniciar el ciclo.", "error");
+        return;
+      }
+
+      // 2. Pedir confirmación al usuario
+      const confirmar = await mostrarConfirmacion(
+        "¿Reiniciar ciclo de auditoría?",
+        "ATENCIÓN: Esto eliminará permanentemente TODOS los datos de Query, Conteo y Reportes de este cliente en Supabase. ¿Desea continuar?"
+      );
+
+      if (!confirmar) return;
+
+      // 3. Ejecutar el reinicio
+      try {
+        mostrarLoading("Reiniciando", "Eliminando registros de Supabase...");
+        
+        await window.reiniciarCliente(cliente.id);
+        
+        // Limpiamos memoria del navegador
+        reporteActualEnMemoria = [];
+        queryCargadoActual = false;
+        reporteDescargado = false; // Reiniciamos el candado
+        localStorage.removeItem(`reportePredi_${cliente.id}`);
+        
+        await cargarEstado();
+        renderizarReporteDinamico();
+        ocultarLoading();
+
+        // Registrar en la huella de auditoría
+        if (typeof window.registrarLog === "function") {
+          await window.registrarLog(`CLIENTE_${cliente.id}`, 'REINICIAR', user?.nombre || user?.email || 'Desconocido');
+          if (rol === "SUPERADMIN") cargarLogsCliente();
+        }
+
+        mostrarModal("Reinicio Completo", "Se ha limpiado toda la data del cliente.", "success");
+      } catch (error) {
+        console.error(error);
+        ocultarLoading();
+        mostrarModal("Error", "No se pudo reiniciar el cliente: " + error.message, "error");
+      }
+    });
+  }
 
 btnProcesar.addEventListener("click", async () => {
     if (btnProcesar.disabled) return;
@@ -209,9 +257,18 @@ btnProcesar.addEventListener("click", async () => {
         const qty = Number(q.cantidad) || 0;
         const um = String(q.um || "").trim().toUpperCase();
 
-        const m = dictMaestra.get(snLimpio) || {};
+const m = dictMaestra.get(snLimpio) || {};
         let um_min = "N2";
         if (["EACH", "UN", "PZA", "UNIDAD", "CJ", "PCS"].includes(um)) um_min = "N1";
+
+        // ¡NUEVO! Calculamos el PLAN exacto aquí para blindarlo en la base de datos
+        let vInner = Number(m.valor_inner) || 1;
+        let vEan14 = Number(m.valor_ean_14) || 1;
+        let planCalculado = 0;
+        if (um_min === "N1") planCalculado = qty;
+        else if (um_min === "N2") planCalculado = qty * vInner;
+        else if (um_min === "N3") planCalculado = qty * vEan14;
+        else planCalculado = qty;
 
         return {
           id_query: q.id,
@@ -227,7 +284,7 @@ btnProcesar.addEventListener("click", async () => {
           ean_14: m.ean_14 || "AGREGAR EN BD",
           valor_ean_14: m.valor_ean_14 || 1,
           um_min: um_min,
-          plan: 0, 
+          plan: planCalculado, // GUARDADO BLINDADO
           real: 0,
           paleta: "",
           comentario: "",
@@ -291,12 +348,40 @@ btnProcesar.addEventListener("click", async () => {
         }
       });
 
-// LÍNEAS NUEVAS: Guarda en memoria persistente local
+      // --- NUEVO: ESCÁNER INTELIGENTE DE INTRUSOS ---
+      let intrusosDetectados = 0;
+      const validEans = new Set();
+      const validLpns = new Set();
+      
+      reporte.forEach(r => {
+        if(r.ean_13) validEans.add(limpiar(r.ean_13));
+        if(r.inner_code) validEans.add(limpiar(r.inner_code));
+        if(r.ean_14) validEans.add(limpiar(r.ean_14));
+        if(r.sku) validEans.add(limpiar(r.sku));
+        if(r.lpn) validLpns.add(limpiar(r.lpn));
+      });
+
+      // Contamos cuántas líneas ingresadas por el auditor son intrusas (LPN o EAN inválidos)
+      conteoData.forEach(c => {
+        const eanLimpio = limpiar(c.ean);
+        const lpnLimpio = limpiar(c.tienda);
+        let esIntruso = false;
+        
+        if (eanLimpio && validEans.size > 0 && !validEans.has(eanLimpio)) esIntruso = true;
+        if (lpnLimpio && validLpns.size > 0 && !validLpns.has(lpnLimpio)) esIntruso = true;
+        
+        if(esIntruso) intrusosDetectados++;
+      });
+
+      let sobrantesEnReporte = reporte.filter(r => calcularDiferenciaPredistribuido(r) > 0 || r.paleta === "LPN NO COINCIDE").length;
+      let totalAlertas = intrusosDetectados + sobrantesEnReporte;
+
+      // Guarda en memoria persistente local
       reporteActualEnMemoria = reporte;
       localStorage.setItem(`reportePredi_${cliente.id}`, JSON.stringify(reporte));
       
-      // ¡NUEVO! SUBIR A LA NUBE: Mapeamos los datos para la tabla genérica de Supabase
-      actualizarLoading("Guardando en la nube...");
+      // SUBIR A LA NUBE: Mapeamos los datos para la tabla genérica de Supabase
+actualizarLoading("Guardando en la nube...");
       const payloadDB = reporte.map((r, i) => ({
         client_id: cliente.id,
         nro: i + 1,
@@ -304,7 +389,7 @@ btnProcesar.addEventListener("click", async () => {
         sku: r.sku,
         descripcion: r.descripcion,
         um: r.um,
-        cantidad: r.cantidad,
+        cantidad: Number(r.cantidad) || 0, // Forzamos número
         ean_13: r.ean_13,
         valor_ean_13: r.valor_ean_13,
         inner_code: r.inner_code,
@@ -312,11 +397,11 @@ btnProcesar.addEventListener("click", async () => {
         ean_14: r.ean_14,
         valor_ean_14: r.valor_ean_14,
         um_min: r.um_min,
-        plan: r.plan,
-        real: r.real,
-        ubicacion: r.paleta,      // Guardamos la Paleta aquí
-        comentario: r.condicion,  // Guardamos la Condición Prioridad aquí
-        comentario_2: r.key       // Guardamos la Key aquí
+        plan: Number(r.plan) || 0,         // Forzamos número
+        real: Number(r.real) || 0,
+        ubicacion: r.paleta,      
+        comentario: r.condicion,  
+        comentario_2: r.comentario || "" 
       }));
       await window.guardarReporteJS(cliente.id, payloadDB);
 
@@ -324,12 +409,26 @@ btnProcesar.addEventListener("click", async () => {
 
       // Auditoría
       if (typeof window.registrarLog === "function") {
-        await window.registrarLog(`CLIENTE_${cliente.id}`, 'CARGA_QUERY', user?.nombre || user?.email || 'Desconocido');
+        await window.registrarLog(`CLIENTE_${cliente.id}`, 'PROCESAR', user?.nombre || user?.email || 'Desconocido');
         if (rol === "SUPERADMIN") cargarLogsCliente();
       }
 
       ocultarLoading();
-      mostrarModal("Proceso terminado", "El cruce se guardó y calculó con éxito.", "success");
+
+      // 3. VENTANA EMERGENTE DINÁMICA
+      if (totalAlertas > 0) {
+        mostrarModal(
+          "Atención: Revisión Sugerida", 
+          `El cruce finalizó, pero se detectaron ${intrusosDetectados} códigos intrusos (LPN o EAN incorrectos) y ${sobrantesEnReporte} sobrantes. Ve a "Editar Datos" para revisarlos.`, 
+          "error" // Muestra alerta Roja/Naranja
+        );
+      } else {
+        mostrarModal(
+          "Proceso terminado",
+          "El reporte fue cruzado matemáticamente con éxito sin detectar sobrantes ni intrusos.",
+          "success" // Muestra alerta Verde
+        );
+      }
 
     } catch (error) {
       console.error(error);
@@ -499,9 +598,9 @@ btnProcesar.addEventListener("click", async () => {
         reporteActualEnMemoria = dataDB.map(d => ({
           lpn: d.columna_b,
           sku: d.sku,
-          descripcion: d.descripcion,
+         descripcion: d.descripcion,
           um: d.um,
-          cantidad: d.cantidad,
+          cantidad: Number(d.cantidad) || 0, // Extraemos como número
           ean_13: d.ean_13,
           valor_ean_13: d.valor_ean_13,
           inner_code: d.inner_code,
@@ -509,11 +608,13 @@ btnProcesar.addEventListener("click", async () => {
           ean_14: d.ean_14,
           valor_ean_14: d.valor_ean_14,
           um_min: d.um_min,
-          plan: d.plan,
-          real: d.real,
+          plan: Number(d.plan) || 0,         // Extraemos como número
+          real: Number(d.real) || 0,
           paleta: d.ubicacion,
           condicion: d.comentario,
-          key: d.comentario_2
+          comentario: d.comentario_2 || "", // Recupera el comentario guardado de la nube
+          comentario_2: "",
+          key: (d.columna_b && d.columna_b.length > 10) ? d.columna_b.slice(-10) : d.columna_b // Genera la key dinámicamente
         }));
         
         // Refrescamos la memoria local por si acaso y dibujamos
@@ -559,17 +660,19 @@ btnProcesar.addEventListener("click", async () => {
   // REEMPLAZO DESDE AQUÍ HASTA EL FINAL DEL ARCHIVO (Línea 541 en adelante aprox.)
   // =================================================================================
 
-  // Función matemática unificada para calcular la diferencia
+// Usamos el Plan real extraído de la base de datos
   function calcularDiferenciaPredistribuido(r) {
-    let cantidad = Number(r.cantidad) || 0;
-    let valorInner = Number(r.valor_inner) || 1;
-    let valorEan14 = Number(r.valor_ean_14) || 1;
-    let valPlan = 0;
+    let valPlan = Number(r.plan) || 0;
     
-    if (r.um_min === "N1") valPlan = cantidad;
-    else if (r.um_min === "N2") valPlan = cantidad * valorInner;
-    else if (r.um_min === "N3") valPlan = cantidad * valorEan14;
-    else valPlan = cantidad;
+    // Respaldo por si acaso es un reporte antiguo que no tenía el plan calculado
+    if (valPlan === 0 && Number(r.cantidad) > 0) {
+      let qty = Number(r.cantidad);
+      if (r.um_min === "N1") valPlan = qty;
+      else if (r.um_min === "N2") valPlan = qty * (Number(r.valor_inner) || 1);
+      else if (r.um_min === "N3") valPlan = qty * (Number(r.valor_ean_14) || 1);
+      else valPlan = qty;
+      r.plan = valPlan; // Actualiza en memoria
+    }
 
     let valReal = Number(r.real) || 0;
     return valReal - valPlan;
@@ -603,7 +706,7 @@ btnProcesar.addEventListener("click", async () => {
         if (valDif > 0) haySobrantes = true;
         if (r.condicion === "PRIORIDAD AUDITAR") hayPrioridad = true;
 
-        let valPlan = (Number(r.real) || 0) - valDif; 
+        let valPlan = Number(r.plan) || 0; // Lee directo de memoria, ya no se calcula hacia atrás
         let valReal = Number(r.real) || 0;
 
         let claseColorDif = "";
@@ -613,6 +716,24 @@ btnProcesar.addEventListener("click", async () => {
 
         let clasePaleta = (r.paleta === "LPN NO COINCIDE") ? "estado-error" : "";
         let claseCondicion = (r.condicion === "PRIORIDAD AUDITAR") ? "estado-warning" : "";
+
+        // LÓGICA DE COMENTARIO EDITABLE (Superadmin siempre, Auditor solo si no ha descargado)
+        let attrComentario = "";
+        let styleComentario = "";
+        let puedeEditar = false;
+        
+        if (valDif !== 0) {
+          if (rol === "SUPERADMIN") {
+            puedeEditar = true;
+          } else if (rol === "AUDITOR" && !reporteDescargado) {
+            puedeEditar = true;
+          }
+        }
+
+if (puedeEditar) {
+          attrComentario = `contenteditable="true" data-lpn="${r.lpn}" data-sku="${r.sku}" data-field="comentario"`;
+          styleComentario = `background-color: #fef08a; border: 1px dashed #ca8a04; cursor: text; font-weight: bold; color:#000; outline: none;`;
+        }
 
         // ¡EL ATRIBUTO t="s" OBLIGA A EXCEL A EXPORTAR COMO TEXTO Y NO COMO NÚMERO CIENTÍFICO!
         tr.innerHTML = `
@@ -632,7 +753,7 @@ btnProcesar.addEventListener("click", async () => {
           <td>${valReal > 0 ? valReal : ""}</td>
           <td t="s" class="${clasePaleta}">${r.paleta || ""}</td>
           <td class="${claseColorDif}">${valDif}</td>
-          <td>${r.comentario || ""}</td>
+          <td ${attrComentario} style="${styleComentario}">${r.comentario || ""}</td>
           <td>${r.comentario_2 || ""}</td>
           <td t="s">${r.key || ""}</td>
           <td t="s" class="${claseCondicion}">${r.condicion || ""}</td>
@@ -661,9 +782,9 @@ btnProcesar.addEventListener("click", async () => {
     let exactosPrioridad = 0;
 
     reporteActualEnMemoria.forEach(r => {
-      let dif = calcularDiferenciaPredistribuido(r);
-      let plan = (Number(r.real) || 0) - dif;
+      let plan = Number(r.plan) || 0;
       let real = Number(r.real) || 0;
+      let dif = real - plan; // ¡AQUÍ ESTÁ LA SOLUCIÓN! Definimos cuánto vale la diferencia
       
       // Conteo visual de las cajas azules (Todo el archivo)
       if (plan > 0) totalPlanG++;
@@ -844,7 +965,9 @@ btnProcesar.addEventListener("click", async () => {
         const mes = String(hoy.getMonth() + 1).padStart(2, '0');
         const nombreArchivo = `${dia}-${mes} Reporte Predistribuido ${cliente.nombre}.xlsx`;
 
-        XLSX.writeFile(wb, nombreArchivo);
+XLSX.writeFile(wb, nombreArchivo);
+        reporteDescargado = true; // Permite el botón Reiniciar
+        renderizarReporteDinamico(); // Bloquea los comentarios del auditor en tiempo real
         ocultarLoading();
 
         if (typeof window.registrarLog === "function") {
@@ -898,4 +1021,54 @@ btnProcesar.addEventListener("click", async () => {
     const fechaF = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
     return `${log.usuario} - ${fechaF}`;
   }
+
+// --- CAPTURAR COMENTARIOS EN MEMORIA PREDISTRIBUIDO ---
+  if (reporteBody) {
+    reporteBody.addEventListener("input", (e) => {
+      if (e.target.hasAttribute("contenteditable") && e.target.dataset.field === "comentario") {
+        const lpnR = e.target.dataset.lpn;
+        const skuR = e.target.dataset.sku;
+        
+        // Buscamos la fila EXACTA que coincida con el LPN y el SKU al mismo tiempo
+        const fila = reporteActualEnMemoria.find(x => String(x.lpn) === String(lpnR) && String(x.sku) === String(skuR));
+        
+        if (fila) {
+          fila.comentario = e.target.textContent.trim();
+          localStorage.setItem(`reportePredi_${cliente.id}`, JSON.stringify(reporteActualEnMemoria));
+        }
+      }
+    });
+  }
+
+// --- VENTANA DE CONFIRMACIÓN ---
+  function mostrarConfirmacion(titulo, mensaje) {
+    return new Promise((resolve) => {
+      const confirmModal = document.getElementById("confirmModal");
+      const confirmCancelBtn = document.getElementById("confirmCancelBtn");
+      const confirmAcceptBtn = document.getElementById("confirmAcceptBtn");
+      const confirmModalTitle = document.getElementById("confirmModalTitle");
+      const confirmModalMessage = document.getElementById("confirmModalMessage");
+
+      if (!confirmModal || !confirmCancelBtn || !confirmAcceptBtn) {
+        mostrarModal("Error", "No se encontró el modal de confirmación en el HTML.", "error");
+        resolve(false);
+        return;
+      }
+
+      confirmModalTitle.textContent = titulo;
+      confirmModalMessage.textContent = mensaje;
+      confirmModal.classList.remove("oculto");
+
+      confirmCancelBtn.onclick = () => {
+        confirmModal.classList.add("oculto");
+        resolve(false);
+      };
+
+      confirmAcceptBtn.onclick = () => {
+        confirmModal.classList.add("oculto");
+        resolve(true);
+      };
+    });
+  }
+
 });

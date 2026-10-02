@@ -27,10 +27,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   const btnAgregarConteo = document.getElementById("btnAgregarConteo");
   const loadingOverlay = document.getElementById("loadingOverlay");
 
-  // Arrays en memoria
+// Arrays en memoria
   let dataQuery = [];
   let dataConteo = [];
-  let conteoEliminados = []; // <--- AQUI VAN LOS IDS DE LAS FILAS QUE ELIMINAS VISUALMENTE
+let conteoEliminados = []; 
+  let validEansGlobal = new Set(); // Guardará los códigos EAN/SKU permitidos
+  let validLpnsGlobal = new Set(); // ¡NUEVO! Guardará los LPN permitidos
 
 // --- ADAPTAR CABECERAS SI ES PREDISTRIBUIDO ---
   if (cliente.tipo_flujo === "PREDISTRIBUIDO") {
@@ -75,16 +77,36 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // --- INICIO DE CARGA ---
+// --- INICIO DE CARGA ---
   await cargarDatos();
 
   async function cargarDatos() {
     loadingOverlay.classList.remove("oculto");
     try {
-      [dataQuery, dataConteo] = await Promise.all([
+      const [dQ, dC, dR] = await Promise.all([
         window.getQueryItems(cliente.id),
-        window.getConteoItems(cliente.id)
+        window.getConteoItems(cliente.id),
+        window.getReporteCliente(cliente.id) // Traemos el reporte cruzado de la BD
       ]);
+      dataQuery = dQ;
+      dataConteo = dC;
+
+// Alimentar lista de EANs y LPNs permitidos limpiando ceros a la izquierda
+      validEansGlobal.clear();
+      validLpnsGlobal.clear(); // ¡NUEVO! Limpiamos memoria de LPNs
+      const limpiar = (str) => String(str || "").replace(/^0+/, "").trim();
+      
+      if (dR && dR.length > 0) {
+        dR.forEach(r => {
+          if(r.ean_13) validEansGlobal.add(limpiar(r.ean_13));
+          if(r.inner_code) validEansGlobal.add(limpiar(r.inner_code));
+          if(r.ean_14) validEansGlobal.add(limpiar(r.ean_14));
+          if(r.sku) validEansGlobal.add(limpiar(r.sku));
+          
+          if(r.columna_b) validLpnsGlobal.add(limpiar(r.columna_b)); // ¡NUEVO! Mapeamos el LPN válido
+        });
+      }
+
       renderQuery(dataQuery);
       renderConteo(dataConteo);
     } catch (error) {
@@ -134,19 +156,33 @@ document.addEventListener("DOMContentLoaded", async () => {
     lista.forEach(r => agregarFilaConteo(r));
   }
 
-  function agregarFilaConteo(r = {}) {
+function agregarFilaConteo(r = {}) {
     const tr = document.createElement("tr");
     if (r.id) tr.dataset.id = r.id;
     
     // Si r viene vacío (nueva fila), usamos el auditor actual
     const auditorName = (r.auditor_email || user?.email || '').split('@')[0];
     
+// Lógica para detectar EAN Intruso
+    const eanLimpio = String(r.ean || "").replace(/^0+/, "").trim();
+    let alertStyleEan = "";
+    if (validEansGlobal.size > 0 && eanLimpio !== "" && !validEansGlobal.has(eanLimpio)) {
+       alertStyleEan = "background-color: #fecaca; color: #b91c1c; font-weight: 900;";
+    }
+
+    // ¡NUEVO! Lógica para detectar LPN Intruso (La tienda funciona como LPN en Predistribuido)
+    const lpnLimpio = String(r.tienda || "").replace(/^0+/, "").trim();
+    let alertStyleLpn = "";
+    if (cliente.tipo_flujo === "PREDISTRIBUIDO" && validLpnsGlobal.size > 0 && lpnLimpio !== "" && !validLpnsGlobal.has(lpnLimpio)) {
+       alertStyleLpn = "background-color: #fecaca; color: #b91c1c; font-weight: 900;";
+    }
+
     if (cliente.tipo_flujo === "PREDISTRIBUIDO") {
         tr.innerHTML = `
           <td>${auditorName}</td>
           <td contenteditable="true" data-field="bulto">${r.bulto || ''}</td>
-          <td contenteditable="true" data-field="tienda">${r.tienda || ''}</td>
-          <td contenteditable="true" data-field="ean">${r.ean || ''}</td>
+          <td contenteditable="true" data-field="tienda" style="${alertStyleLpn}" title="${alertStyleLpn ? 'Este LPN NO existe en la base Query.' : ''}">${r.tienda || ''}</td>
+          <td contenteditable="true" data-field="ean" style="${alertStyleEan}" title="${alertStyleEan ? 'Este código EAN/SKU NO existe en la base Query.' : ''}">${r.ean || ''}</td>
           <td contenteditable="true" data-field="cantidad" class="col-number">${r.cantidad !== null && r.cantidad !== undefined ? r.cantidad : ''}</td>
           <td style="text-align:center;"><button class="btn-delete-row" style="color:#dc2626; font-weight:bold; background:transparent; border:none; cursor:pointer; font-size:16px;">✕</button></td>
         `;
@@ -155,7 +191,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           <td>${auditorName}</td>
           <td contenteditable="true" data-field="tienda">${r.tienda || ''}</td>
           <td contenteditable="true" data-field="bulto">${r.bulto || ''}</td>
-          <td contenteditable="true" data-field="ean">${r.ean || ''}</td>
+          <td contenteditable="true" data-field="ean" style="${alertStyleEan}" title="${alertStyleEan ? 'Este código NO existe en la base Query.' : ''}">${r.ean || ''}</td>
           <td contenteditable="true" data-field="cantidad" class="col-number">${r.cantidad !== null && r.cantidad !== undefined ? r.cantidad : ''}</td>
           <td style="text-align:center;"><button class="btn-delete-row" style="color:#dc2626; font-weight:bold; background:transparent; border:none; cursor:pointer; font-size:16px;">✕</button></td>
         `;

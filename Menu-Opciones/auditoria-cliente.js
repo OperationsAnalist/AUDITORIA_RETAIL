@@ -35,6 +35,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const reporteBody = document.getElementById("reporteBody");
 
   let queryCargadoActual = false;
+  let reporteDescargado = false; // NUEVO: Candado de seguridad
 
   const loadingOverlay = document.getElementById("loadingOverlay");
   const loadingTitle = document.getElementById("loadingTitle");
@@ -96,12 +97,38 @@ configurarPermisos();
       const resultado = await window.procesarCliente(cliente.codigo);
       console.log("Resultado proceso:", resultado);
 
-      actualizarLoading("Actualizando reporte...");
+actualizarLoading("Actualizando reporte...");
 
       await cargarEstado();
       await cargarReporte();
 
-ocultarLoading();
+      actualizarLoading("Verificando códigos intrusos...");
+      
+      // 1. Lógica para detectar EANs Intrusos (Que se pintarán de rojo en Editar Datos)
+      const dataConteo = await window.getConteoItems(cliente.id);
+      const validEans = new Set();
+      const limpiar = (str) => String(str || "").replace(/^0+/, "").trim();
+      
+      reporteActualEnMemoria.forEach(r => {
+        if(r.ean_13) validEans.add(limpiar(r.ean_13));
+        if(r.inner_code) validEans.add(limpiar(r.inner_code));
+        if(r.ean_14) validEans.add(limpiar(r.ean_14));
+        if(r.sku) validEans.add(limpiar(r.sku));
+      });
+
+      let intrusosDetectados = 0;
+      dataConteo.forEach(c => {
+        const eanLimpio = limpiar(c.ean);
+        if (eanLimpio && validEans.size > 0 && !validEans.has(eanLimpio)) {
+          intrusosDetectados++; // Suma 1 por cada código huérfano escaneado
+        }
+      });
+
+      // 2. Validar si también hay sobrantes matemáticos (Diferencia > 0)
+      let sobrantesEnReporte = reporteActualEnMemoria.filter(r => calcularDiferenciaMatematica(r) > 0).length;
+      let totalAlertas = intrusosDetectados + sobrantesEnReporte;
+
+      ocultarLoading();
 
       // --- INICIO NUEVO CÓDIGO (PROCESAR) ---
       if (typeof window.registrarLog === "function") {
@@ -110,11 +137,20 @@ ocultarLoading();
       }
       // --- FIN NUEVO CÓDIGO ---
 
-      mostrarModal(
-        "Proceso terminado",
-        "El reporte fue generado correctamente.",
-        "success"
-      );
+      // 3. VENTANA EMERGENTE DINÁMICA
+      if (totalAlertas > 0) {
+        mostrarModal(
+          "Atención: Revisión Sugerida", 
+          `El cruce finalizó, pero se detectaron ${intrusosDetectados} códigos intrusos (no existen en el query) y ${sobrantesEnReporte} sobrantes. Ve a "Editar Datos" para revisarlos.`, 
+          "error" // Lo muestra en rojo/naranja
+        );
+      } else {
+        mostrarModal(
+          "Proceso terminado",
+          "El reporte fue cruzado matemáticamente con éxito sin detectar sobrantes.",
+          "success" // Lo muestra en verde
+        );
+      }
 
     } catch (error) {
       console.error("Error procesando cliente:", error);
@@ -134,7 +170,13 @@ ocultarLoading();
   });
 
 // --- BOTÓN REINICIAR (RESET TOTAL) ---
-  btnReiniciar.addEventListener("click", async () => {
+btnReiniciar.addEventListener("click", async () => {
+    // Validamos si hay un reporte generado y si NO lo han descargado
+    if (reporteActualEnMemoria.length > 0 && !reporteDescargado) {
+      mostrarModal("Descarga Requerida", "Por seguridad, debes hacer clic en 'DESCARGAR' para guardar el reporte final antes de reiniciar el ciclo.", "error");
+      return;
+    }
+
     const confirmar = await mostrarConfirmacion(
       "¿Reiniciar ciclo de auditoría?",
       "ATENCIÓN: Esto eliminará permanentemente TODOS los datos de Query, Conteo y Reportes de este cliente en Supabase. El ciclo empezará desde cero. ¿Desea continuar?"
@@ -213,9 +255,9 @@ ocultarLoading();
       const mes = String(hoy.getMonth() + 1).padStart(2, '0');
       const nombreArchivo = `${dia}-${mes} Verificación de Picking Regular ${cliente.nombre}.xlsx`;
 
-// 6. Descargar
       XLSX.writeFile(wb, nombreArchivo);
-      
+      reporteDescargado = true; // Liberamos el candado de Reiniciar
+      renderizarReporteDinamico(); // ¡NUEVO! Refresca la tabla para bloquear los comentarios al Auditor
       ocultarLoading();
 
       // --- INICIO NUEVO CÓDIGO (DESCARGAR) ---
@@ -610,10 +652,29 @@ function configurarPermisos() {
       let valPlan = (Number(r.real) || 0) - valDif; 
       let valReal = Number(r.real) || 0;
 
-      let claseColorDif = "";
+let claseColorDif = "";
       if (valDif === 0) claseColorDif = "dif-cero";
       else if (valDif > 0) claseColorDif = "dif-pos";
       else if (valDif < 0) claseColorDif = "dif-neg";
+
+// LÓGICA DE COMENTARIO EDITABLE (Auditor y SuperAdmin)
+      let attrComentario = "";
+      let styleComentario = "";
+      let puedeEditar = false;
+        
+      if (valDif !== 0) {
+        if (rol === "SUPERADMIN") {
+          puedeEditar = true; // Superadmin siempre puede editar
+        } else if (rol === "AUDITOR" && !reporteDescargado) {
+          puedeEditar = true; // Auditor puede editar SOLO si no ha descargado
+        }
+      }
+
+      if (puedeEditar) {
+        // Usamos r.nro (Número de fila único) para no perder el rastro al filtrar
+        attrComentario = `contenteditable="true" data-nro="${r.nro}" data-field="comentario"`;
+        styleComentario = `background-color: #fef08a; border: 1px dashed #ca8a04; cursor: text; font-weight: bold; color:#000; outline: none;`;
+      }
 
       tr.innerHTML = `
         <td>${valor(r.nro)}</td>
@@ -633,8 +694,8 @@ function configurarPermisos() {
         <td>${valReal > 0 ? valReal : ""}</td>
         <td t="s">${valor(r.ubicacion)}</td>
         <td class="${claseColorDif}">${valDif}</td>
-        <td>${valor(r.comentario)}</td>
-        <td>${valor(r.comentario_2)}</td>
+        <td ${attrComentario} style="${styleComentario}">${r.comentario || ""}</td>
+        <td>${r.comentario_2 || ""}</td>
       `;
       reporteBody.appendChild(tr);
     });
@@ -915,4 +976,20 @@ function configurarPermisos() {
     const fechaF = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
     return `${log.usuario} - ${fechaF}`;
   }
+
+// Capturar lo que escriben y guardarlo en memoria anclado a su fila exacta
+  if (reporteBody) {
+    reporteBody.addEventListener("input", (e) => {
+      if (e.target.hasAttribute("contenteditable") && e.target.dataset.field === "comentario") {
+        const nroFila = e.target.dataset.nro;
+        // Buscamos la fila exacta por su número único (Nro)
+        const fila = reporteActualEnMemoria.find(x => String(x.nro) === String(nroFila));
+        if (fila) {
+          fila.comentario = e.target.textContent.trim();
+          localStorage.setItem(`reporteRegular_${cliente.id}`, JSON.stringify(reporteActualEnMemoria));
+        }
+      }
+    });
+  }
+
 });
