@@ -651,19 +651,54 @@ btnProcesar.addEventListener("click", async () => {
       }
     }
 
-    // Recalcular KPIs GLOBALES (siempre sobre memoria total para no alterar el %)
-    let totalPlanG = 0, totalRealG = 0;
+// Recalcular KPIs GLOBALES (siempre sobre memoria total para no alterar el %)
+    let totalPlanG = 0; 
+    let totalRealG = 0; 
+    
+    // Variables para la nueva fórmula de Efectividad Híbrida (Solo cuenta PRIORIDAD)
+    let universoPrioridad = 0;
+    let avancePrioridad = 0;
+    let exactosPrioridad = 0;
+
     reporteActualEnMemoria.forEach(r => {
       let dif = calcularDiferenciaPredistribuido(r);
-      let p = (Number(r.real) || 0) - dif;
-      if (p > 0) totalPlanG++;
-      if ((Number(r.real) || 0) > 0) totalRealG++;
+      let plan = (Number(r.real) || 0) - dif;
+      let real = Number(r.real) || 0;
+      
+      // Conteo visual de las cajas azules (Todo el archivo)
+      if (plan > 0) totalPlanG++;
+      if (real > 0) totalRealG++;
+
+      // Análisis Estricto para Efectividad (Solo evalúa líneas de PRIORIDAD AUDITAR)
+      if (r.condicion === "PRIORIDAD AUDITAR") {
+        universoPrioridad++; // Ítem que debió ser auditado obligatoriamente
+        
+        if (real > 0) {
+          avancePrioridad++; // Ítem de prioridad que sí fue tocado por el auditor
+          
+          if (dif === 0) {
+            exactosPrioridad++; // Ítem de prioridad que cuadró a la perfección
+          }
+        }
+      }
     });
 
+    // Pintar cajas azules
     document.getElementById("kpiPlan").textContent = `${totalPlanG} ITEMS`;
     document.getElementById("kpiReal").textContent = `${totalRealG} ITEMS`;
 
-    const efectividad = totalPlanG > 0 ? (totalRealG / totalPlanG) * 100 : 0;
+    // Calcular Efectividad Híbrida (50% Avance + 50% Exactitud sobre el universo de Prioridad)
+    let efectividad = 0;
+    if (universoPrioridad > 0) {
+      const pAvance = (avancePrioridad / universoPrioridad) * 50;
+      const pExactitud = (exactosPrioridad / universoPrioridad) * 50;
+      efectividad = pAvance + pExactitud;
+    } else {
+      // Si por alguna razón no hay ninguna prioridad en el Excel, recurre a la fórmula clásica
+      efectividad = totalPlanG > 0 ? (totalRealG / totalPlanG) * 100 : 0;
+    }
+
+    // Pintar caja de Efectividad
     const kpiEfectividadBox = document.getElementById("kpiEfectividadBox");
     document.getElementById("kpiEfectividad").textContent = `${efectividad.toFixed(2)}%`;
 
