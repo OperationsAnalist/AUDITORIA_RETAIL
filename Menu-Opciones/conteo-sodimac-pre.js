@@ -73,22 +73,41 @@ document.addEventListener("DOMContentLoaded", async () => {
   conteoBody.addEventListener("focusin", seleccionarContenidoCelda);
 
   // --- FUNCIONES PRINCIPALES ---
-  async function cargarConteoExistente() {
+async function cargarConteoExistente() {
     mostrarLoading("Cargando conteo", "Consultando registros del auditor...");
     try {
       loteActual = await window.getOrCreateConteoLote({ clientId: cliente.id, auditorEmail: user.email });
-      const registros = await window.getConteoAuditor({ clientId: cliente.id, auditorEmail: user.email });
+      
+      // 1. Revisar si hay un borrador offline
+      const borrador = localStorage.getItem(`borrador_conteo_sodimac_${cliente.id}_${user.email}`);
+      let registros = [];
 
+      if (borrador) {
+        registros = JSON.parse(borrador); // Prioridad al borrador local
+        // Transformar la estructura del borrador (tienda, bulto) a la visual (lpn, paleta)
+        registros = registros.map(r => ({
+          paleta: r.bulto,
+          lpn: r.tienda,
+          ean: r.ean,
+          cantidad: r.cantidad
+        }));
+      } else {
+        // 2. Si no hay borrador, descargar de Supabase
+        const datosNube = await window.getConteoAuditor({ clientId: cliente.id, auditorEmail: user.email });
+        registros = datosNube.map(r => ({
+          id: r.id,
+          paleta: r.bulto, 
+          lpn: r.tienda,   
+          ean: r.ean,
+          cantidad: r.cantidad
+        }));
+      }
+
+      // 3. Pintar los datos
       if (registros && registros.length > 0) {
         conteoBody.innerHTML = "";
         registros.forEach((r) => {
-          agregarFila({
-            id: r.id,
-            paleta: r.bulto, // TRUCO: La BD devuelve 'bulto', lo mapeamos a 'paleta'
-            lpn: r.tienda,   // TRUCO: La BD devuelve 'tienda', lo mapeamos a 'lpn'
-            ean: r.ean,
-            cantidad: r.cantidad
-          });
+          agregarFila(r);
         });
         if (registros.length < 50) agregarFilas(50 - registros.length);
       }
@@ -169,12 +188,14 @@ document.addEventListener("DOMContentLoaded", async () => {
           await window.eliminarConteoItem(tr.dataset.id);
           tr.remove();
           ocultarLoading();
+          ejecutarAutoguardado(); // <-- NUEVO: Dispara el autoguardado
         } catch (error) {
           ocultarLoading();
           mostrarModal("Error", error.message, "error");
         }
       } else {
         tr.remove();
+        ejecutarAutoguardado(); // <-- NUEVO: Dispara el autoguardado
       }
     });
 
@@ -364,5 +385,54 @@ function manejarPegadoExcel(event) {
       confirmAcceptBtn.onclick = () => { confirmModal.classList.add("oculto"); resolve(true); };
     });
   }
+
+// --- AUTOGUARDADO EN TIEMPO REAL ---
+  let timeoutAutoguardado = null;
+
+  async function ejecutarAutoguardado() {
+    const items = obtenerItemsTabla();
+    if (!items.length) return;
+
+    // 1. Guardar en memoria local (Offline Inmediato)
+    localStorage.setItem(`borrador_conteo_sodimac_${cliente.id}_${user.email}`, JSON.stringify(items));
+
+    // 2. Mostrar indicador visual pequeño (Opcional, si tienes un elemento para esto)
+    if (document.getElementById("indicadorAutoguardado")) {
+      document.getElementById("indicadorAutoguardado").textContent = "Guardando...";
+      document.getElementById("indicadorAutoguardado").style.color = "#ca8a04"; // Amarillo
+    }
+
+    // 3. Subir a Supabase de forma silenciosa
+    try {
+      const resultado = await window.guardarConteoAuditor({ 
+        clientId: cliente.id, 
+        auditorEmail: user.email, 
+        items 
+      });
+      
+      loteActual = resultado.lote;
+
+      if (document.getElementById("indicadorAutoguardado")) {
+        document.getElementById("indicadorAutoguardado").textContent = "Guardado";
+        document.getElementById("indicadorAutoguardado").style.color = "#16a34a"; // Verde
+      }
+    } catch (error) {
+      console.error("Autoguardado falló:", error);
+      if (document.getElementById("indicadorAutoguardado")) {
+        document.getElementById("indicadorAutoguardado").textContent = "Offline (Guardado localmente)";
+        document.getElementById("indicadorAutoguardado").style.color = "#dc2626"; // Rojo
+      }
+    }
+  }
+
+  // Escuchar todos los cambios en la tabla
+  conteoBody.addEventListener("input", (e) => {
+    if (e.target.hasAttribute("contenteditable")) {
+      // Reiniciar el contador si sigue escribiendo
+      clearTimeout(timeoutAutoguardado);
+      // Ejecutar el guardado 1 segundo después de que deje de escribir
+      timeoutAutoguardado = setTimeout(ejecutarAutoguardado, 1000); 
+    }
+  });
 
 });
