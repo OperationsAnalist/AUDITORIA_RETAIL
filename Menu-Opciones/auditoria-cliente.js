@@ -684,6 +684,7 @@ let claseColorDif = "";
 
 tr.innerHTML = `
         <td>${valor(r.nro)}</td>
+        <td>${valor(r.columna_b)}</td>
         <td t="s">${valor(r.sku)}</td>
         <td>${valor(r.descripcion)}</td>
         <td>${valor(r.um)}</td>
