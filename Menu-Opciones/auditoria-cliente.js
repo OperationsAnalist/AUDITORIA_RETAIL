@@ -10,7 +10,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  const cliente = JSON.parse(clienteRaw);
+const cliente = JSON.parse(clienteRaw);
+
+  // ¡ESCUDO PROTECTOR! Si el cliente es Predistribuido, lo expulsa a su interfaz correcta
+  if (cliente.tipo_flujo === "PREDISTRIBUIDO") {
+    window.location.href = "./auditoria-sodimac-pre.html";
+    return;
+  }
   
   const user = typeof window.getUser === "function" ? window.getUser() : null;
   const rol = String(user?.rol || "").toUpperCase(); // Hace que el ROL sea visible para todo el archivo
@@ -676,9 +682,8 @@ let claseColorDif = "";
         styleComentario = `background-color: #fef08a; border: 1px dashed #ca8a04; cursor: text; font-weight: bold; color:#000; outline: none;`;
       }
 
-      tr.innerHTML = `
+tr.innerHTML = `
         <td>${valor(r.nro)}</td>
-        <td>${valor(r.columna_b)}</td>
         <td t="s">${valor(r.sku)}</td>
         <td>${valor(r.descripcion)}</td>
         <td>${valor(r.um)}</td>

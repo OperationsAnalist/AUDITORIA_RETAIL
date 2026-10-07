@@ -31,34 +31,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // --- EVENTOS DEL MODAL SODIMAC ---
-  if (btnCerrarModalSodimac) {
-    btnCerrarModalSodimac.addEventListener("click", () => {
-      modalSodimac.classList.add("oculto");
-      clienteTemporal = null;
-    });
-  }
-
-  if (btnSodimacRegular) {
-    btnSodimacRegular.addEventListener("click", () => {
-      if (clienteTemporal) {
-        clienteTemporal.tipo_flujo = "REGULAR";
-        localStorage.setItem("clienteSeleccionado", JSON.stringify(clienteTemporal));
-        window.location.href = "./auditoria-cliente.html";
-      }
-    });
-  }
-
-  if (btnSodimacPre) {
-    btnSodimacPre.addEventListener("click", () => {
-      if (clienteTemporal) {
-        clienteTemporal.tipo_flujo = "PREDISTRIBUIDO";
-        localStorage.setItem("clienteSeleccionado", JSON.stringify(clienteTemporal));
-        window.location.href = "./auditoria-sodimac-pre.html"; // NUEVA PANTALLA
-      }
-    });
-  }
-
   if (!grid) return;
 
   // --- LÓGICA DE CARGA DE CLIENTES ---
@@ -98,16 +70,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         const img = card.querySelector("img");
         img.onerror = () => { img.src = "../IMG/logo.png"; };
 
-        // LÓGICA DE CLIC EN LA TARJETA
+// LÓGICA DE CLIC EN LA TARJETA
         card.addEventListener("click", () => {
-          // Si el nombre del cliente contiene "SODIMAC"
-          if (cliente.nombre.toUpperCase().includes("SODIMAC")) {
-            clienteTemporal = cliente;
-            if(imgModalSodimac) imgModalSodimac.src = logo;
-            modalSodimac.classList.remove("oculto");
+          // Si el nombre del cliente dice "PREDISTRIBUIDO", lo enviamos a esa pantalla
+          if (cliente.nombre.toUpperCase().includes("PREDISTRIBUIDO")) {
+            cliente.tipo_flujo = "PREDISTRIBUIDO"; // Forzamos el flujo internamente
+            localStorage.setItem("clienteSeleccionado", JSON.stringify(cliente));
+            window.location.href = "./auditoria-sodimac-pre.html";
           } else {
-            // Flujo normal para el resto de clientes
-            cliente.tipo_flujo = "REGULAR";
+            // Flujo normal para TODOS los demás (Promart, SP, Cencosud y Sodimac Regular)
+            cliente.tipo_flujo = "REGULAR"; // Forzamos el flujo regular internamente
             localStorage.setItem("clienteSeleccionado", JSON.stringify(cliente));
             window.location.href = "./auditoria-cliente.html";
           }

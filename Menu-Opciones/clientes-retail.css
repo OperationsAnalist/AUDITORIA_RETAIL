@@ -42,8 +42,27 @@ body {
 
 .clientes-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  /* Forzamos exactamente 6 columnas iguales */
+  grid-template-columns: repeat(6, 1fr); 
   gap: 22px;
+  /* Centra la cuadrícula entera si la pantalla es muy grande */
+  justify-content: center; 
+}
+
+/* Opcional pero recomendado: Hacemos las tarjetas un poquito más esbeltas para que respiren en pantallas normales */
+.cliente-card {
+  min-height: 200px;
+  padding: 16px;
+  border-radius: 22px;
+  background: #ffffff;
+  border: 1px solid #dbe5ef;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  cursor: pointer;
+  transition: 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .cliente-card {
