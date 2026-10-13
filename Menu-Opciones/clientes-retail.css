@@ -42,11 +42,18 @@ body {
 
 .clientes-grid {
   display: grid;
-  /* Forzamos exactamente 6 columnas iguales */
+  /* Configuración por defecto para PC grandes: 6 columnas */
   grid-template-columns: repeat(6, 1fr); 
   gap: 22px;
-  /* Centra la cuadrícula entera si la pantalla es muy grande */
   justify-content: center; 
+}
+
+/* ¡NUEVO! Regla responsiva para Tablets y Celulares */
+@media (max-width: 1024px) {
+  .clientes-grid {
+    /* Si la pantalla es menor a 1024px, que las tarjetas se adapten solas al ancho, sin salirse de la pantalla */
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
 }
 
 /* Opcional pero recomendado: Hacemos las tarjetas un poquito más esbeltas para que respiren en pantallas normales */
