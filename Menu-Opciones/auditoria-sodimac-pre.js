@@ -91,24 +91,45 @@ try {
       actualizarLoading("Eliminando QUERY anterior...");
       await window.limpiarQueryCliente(cliente.id);
 
-      actualizarLoading("Creando nueva carga...");
+actualizarLoading("Creando nueva carga...");
       const upload = await window.crearQueryUpload({
         clientId: cliente.id,
         archivoNombre: archivo.name,
         email: user?.email || ""
       });
 
+      // --- NUEVA LÓGICA: LISTA DE CÓDIGOS DIVISIÓN ENTRE 50 ---
+      const codigosEspeciales = new Set([
+        "HB00460281", "HB00477446", "HB00477447", "HB00477451",
+        "HB00460268", "HB00460270", "HB00477449", "HB00460266",
+        "HB00460269", "HB00477452", "HB00460267", "HB00477457",
+        "HB00477448", "HB00460272", "HB00477455", "HB00477459",
+        "HB00477453", "HB00477458", "HB00477445", "HB00460273",
+        "HB00460271", "HB00460274", "HB00477450"
+      ]);
+
       // 2. Mapear datos a la estructura de Supabase (LPN irá en columna_e)
-      const items = registros.map((r, index) => ({
-        upload_id: upload.id,
-        client_id: cliente.id,
-        fila_excel: index + 2,
-        columna_e: r.lpn,      // Guardamos el LPN aquí
-        sku: r.sn,             // Guardamos el SN aquí
-        descripcion: r.descripcion,
-        um: "EACH",            // UM Forzada por la macro
-        cantidad: r.cantidad
-      }));
+      const items = registros.map((r, index) => {
+        // Limpiamos el SKU (SN) para asegurarnos de que coincida con la lista
+        const snLimpio = String(r.sn || "").trim().toUpperCase();
+        
+        // Verificamos si el SKU está en la lista especial
+        let cantidadFinal = Number(r.cantidad) || 0;
+        if (codigosEspeciales.has(snLimpio)) {
+          cantidadFinal = cantidadFinal / 50; // ¡Aplicamos la división!
+        }
+
+        return {
+          upload_id: upload.id,
+          client_id: cliente.id,
+          fila_excel: index + 2,
+          columna_e: r.lpn,      // Guardamos el LPN aquí
+          sku: r.sn,             // Guardamos el SN aquí
+          descripcion: r.descripcion,
+          um: "EACH",            // UM Forzada por la macro
+          cantidad: cantidadFinal // Guardamos la cantidad real (dividida si aplica)
+        };
+      });
 
       actualizarLoading("Guardando en base de datos...");
       await window.insertarQueryItems(items);
