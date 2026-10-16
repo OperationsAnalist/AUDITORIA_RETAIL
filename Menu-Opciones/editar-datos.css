@@ -137,3 +137,56 @@ body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: #eef3f
 /* Botones específicos para modales (por si no están definidos) */
 .btn-guardar { background: #0f172a; color: #fff; border-radius: 10px; padding: 10px 24px; font-weight: 800; cursor: pointer; border: none; }
 .btn-guardar:hover { background: #1e293b; }
+
+/* ========================================================= */
+/* --- DISEÑO RESPONSIVO (TABLETS Y CELULARES) --- */
+/* ========================================================= */
+
+/* 1. Ajustes para Tablets (iPad, Galaxy Tab, etc) - Hasta 1024px */
+@media (max-width: 1024px) {
+  .split-container {
+    flex-direction: column; /* Apila un panel arriba (Query) y otro abajo (Conteo) */
+    height: auto; /* Libera la altura fija */
+    min-height: auto;
+  }
+  
+  .panel-box {
+    min-height: 500px; /* Le da a cada tabla su propio espacio vertical para no cruzar scroll */
+    max-height: 60vh; /* Evita que crezca infinito */
+  }
+
+  .header-logo-box {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+}
+
+/* 2. Ajustes para Tablets pequeñas y Celulares - Hasta 768px */
+@media (max-width: 768px) {
+  .panel-head {
+    flex-direction: column; /* Pone el título arriba y el buscador/botones abajo */
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .panel-actions {
+    flex-wrap: wrap; /* Permite que los botones salten a otra línea si no caben */
+    justify-content: space-between;
+  }
+
+  .input-search {
+    width: 100%; /* El buscador ocupa toda la fila para poder escribir bien */
+    min-width: unset;
+  }
+
+  .btn-sm {
+    flex: 1; /* Los botones se estiran para ser más fáciles de tocar con el dedo */
+    justify-content: center;
+  }
+
+  /* Ajuste de padding general para no desperdiciar espacio en móviles */
+  .split-main {
+    padding: 10px 5px 40px;
+  }
+}
