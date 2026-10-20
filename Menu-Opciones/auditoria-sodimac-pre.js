@@ -1046,6 +1046,10 @@ XLSX.writeFile(wb, nombreArchivo);
 // --- AUTOGUARDADO DE COMENTARIOS EN LA NUBE (FLUJO PREDISTRIBUIDO) ---
   if (reporteBody) {
     let timeoutComentarioPredi = null;
+    
+    // Variables locales para que la interfaz pueda comunicarse con Supabase
+    const DB_URL = "https://nejbtfzioxmernkknkmv.supabase.co";
+    const DB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5lamJ0Znppb3htZXJua2tua212Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyNzQ0NDUsImV4cCI6MjEwNTg1MDQ0NX0.UAGuqFHP8i-OK9pNEZSMgEGxcdPctZDM3TigMN_cxI8";
 
     reporteBody.addEventListener("input", (e) => {
       if (e.target.hasAttribute("contenteditable") && e.target.dataset.field === "comentario") {
@@ -1068,25 +1072,24 @@ XLSX.writeFile(wb, nombreArchivo);
         // 4. Si deja de escribir por 1 segundo, lo mandamos a la nube
         timeoutComentarioPredi = setTimeout(async () => {
           try {
-            // Buscamos la fila usando client_id, columna_b (LPN) y sku
             const lpnCodificado = encodeURIComponent(lpnR);
             const skuCodificado = encodeURIComponent(skuR);
-            const url = `${SUPABASE_URL}/rest/v1/reporte_items?client_id=eq.${cliente.id}&columna_b=eq.${lpnCodificado}&sku=eq.${skuCodificado}`;
+            const url = `${DB_URL}/rest/v1/reporte_items?client_id=eq.${cliente.id}&columna_b=eq.${lpnCodificado}&sku=eq.${skuCodificado}`;
             
-            await fetch(url, {
+            const response = await fetch(url, {
               method: "PATCH",
               headers: { 
                 "Content-Type": "application/json", 
-                "apikey": SUPABASE_ANON_KEY, 
-                "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, 
+                "apikey": DB_KEY, 
+                "Authorization": `Bearer ${DB_KEY}`, 
                 "Prefer": "return=minimal" 
               },
-              body: JSON.stringify({ comentario: nuevoTexto })
+              body: JSON.stringify({ comentario_2: nuevoTexto }) // <--- ¡CRÍTICO! En Predistribuido, el comentario va en "comentario_2"
             });
 
-            console.log(`Comentario Predistribuido guardado en BD para LPN: ${lpnR}`);
+            if(response.ok) console.log(`Comentario Predistribuido guardado en la nube para LPN: ${lpnR}`);
           } catch (error) {
-            console.error("Error al guardar comentario predistribuido en la nube:", error);
+            console.error("Error al guardar comentario en la nube:", error);
           }
         }, 1000); 
       }

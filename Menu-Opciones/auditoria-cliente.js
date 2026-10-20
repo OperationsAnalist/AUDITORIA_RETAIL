@@ -986,6 +986,10 @@ tr.innerHTML = `
 // --- AUTOGUARDADO DE COMENTARIOS EN LA NUBE (FLUJO REGULAR) ---
   if (reporteBody) {
     let timeoutComentario = null;
+    
+    // Variables locales para que la interfaz pueda comunicarse con Supabase
+    const DB_URL = "https://nejbtfzioxmernkknkmv.supabase.co";
+    const DB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5lamJ0Znppb3htZXJua2tua212Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyNzQ0NDUsImV4cCI6MjEwNTg1MDQ0NX0.UAGuqFHP8i-OK9pNEZSMgEGxcdPctZDM3TigMN_cxI8";
 
     reporteBody.addEventListener("input", (e) => {
       if (e.target.hasAttribute("contenteditable") && e.target.dataset.field === "comentario") {
@@ -1007,23 +1011,22 @@ tr.innerHTML = `
         // 4. Si deja de escribir por 1 segundo, lo mandamos a la nube silenciosamente
         timeoutComentario = setTimeout(async () => {
           try {
-            // Buscamos el ID real de la fila en la base de datos usando client_id y nro
-            const url = `${SUPABASE_URL}/rest/v1/reporte_items?client_id=eq.${cliente.id}&nro=eq.${nroFila}`;
+            const url = `${DB_URL}/rest/v1/reporte_items?client_id=eq.${cliente.id}&nro=eq.${nroFila}`;
             
-            await fetch(url, {
+            const response = await fetch(url, {
               method: "PATCH",
               headers: { 
                 "Content-Type": "application/json", 
-                "apikey": SUPABASE_ANON_KEY, 
-                "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, 
+                "apikey": DB_KEY, 
+                "Authorization": `Bearer ${DB_KEY}`, 
                 "Prefer": "return=minimal" 
               },
-              body: JSON.stringify({ comentario: nuevoTexto })
+              body: JSON.stringify({ comentario: nuevoTexto }) // En flujo Regular, la BD usa la columna "comentario"
             });
 
-            console.log(`Comentario guardado en BD para fila ${nroFila}`);
+            if(response.ok) console.log(`Comentario guardado en la nube para fila ${nroFila}`);
           } catch (error) {
-            console.error("Error al guardar comentario en la nube:", error);
+            console.error("Error de red al guardar comentario:", error);
           }
         }, 1000); 
       }
