@@ -983,17 +983,49 @@ tr.innerHTML = `
     return `${log.usuario} - ${fechaF}`;
   }
 
-// Capturar lo que escriben y guardarlo en memoria anclado a su fila exacta
+// --- AUTOGUARDADO DE COMENTARIOS EN LA NUBE (FLUJO REGULAR) ---
   if (reporteBody) {
+    let timeoutComentario = null;
+
     reporteBody.addEventListener("input", (e) => {
       if (e.target.hasAttribute("contenteditable") && e.target.dataset.field === "comentario") {
+        
         const nroFila = e.target.dataset.nro;
-        // Buscamos la fila exacta por su número único (Nro)
+        const nuevoTexto = e.target.textContent.trim();
+        
+        // 1. Buscamos la fila en memoria
         const fila = reporteActualEnMemoria.find(x => String(x.nro) === String(nroFila));
-        if (fila) {
-          fila.comentario = e.target.textContent.trim();
-          localStorage.setItem(`reporteRegular_${cliente.id}`, JSON.stringify(reporteActualEnMemoria));
-        }
+        if (!fila) return;
+
+        // 2. Guardamos localmente de inmediato (Para rapidez visual)
+        fila.comentario = nuevoTexto;
+        localStorage.setItem(`reporteRegular_${cliente.id}`, JSON.stringify(reporteActualEnMemoria));
+
+        // 3. Reiniciamos el reloj cada vez que presiona una tecla
+        clearTimeout(timeoutComentario);
+        
+        // 4. Si deja de escribir por 1 segundo, lo mandamos a la nube silenciosamente
+        timeoutComentario = setTimeout(async () => {
+          try {
+            // Buscamos el ID real de la fila en la base de datos usando client_id y nro
+            const url = `${SUPABASE_URL}/rest/v1/reporte_items?client_id=eq.${cliente.id}&nro=eq.${nroFila}`;
+            
+            await fetch(url, {
+              method: "PATCH",
+              headers: { 
+                "Content-Type": "application/json", 
+                "apikey": SUPABASE_ANON_KEY, 
+                "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, 
+                "Prefer": "return=minimal" 
+              },
+              body: JSON.stringify({ comentario: nuevoTexto })
+            });
+
+            console.log(`Comentario guardado en BD para fila ${nroFila}`);
+          } catch (error) {
+            console.error("Error al guardar comentario en la nube:", error);
+          }
+        }, 1000); 
       }
     });
   }

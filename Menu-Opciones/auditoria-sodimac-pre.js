@@ -1043,20 +1043,52 @@ XLSX.writeFile(wb, nombreArchivo);
     return `${log.usuario} - ${fechaF}`;
   }
 
-// --- CAPTURAR COMENTARIOS EN MEMORIA PREDISTRIBUIDO ---
+// --- AUTOGUARDADO DE COMENTARIOS EN LA NUBE (FLUJO PREDISTRIBUIDO) ---
   if (reporteBody) {
+    let timeoutComentarioPredi = null;
+
     reporteBody.addEventListener("input", (e) => {
       if (e.target.hasAttribute("contenteditable") && e.target.dataset.field === "comentario") {
+        
         const lpnR = e.target.dataset.lpn;
         const skuR = e.target.dataset.sku;
+        const nuevoTexto = e.target.textContent.trim();
         
-        // Buscamos la fila EXACTA que coincida con el LPN y el SKU al mismo tiempo
+        // 1. Buscamos la fila exacta
         const fila = reporteActualEnMemoria.find(x => String(x.lpn) === String(lpnR) && String(x.sku) === String(skuR));
+        if (!fila) return;
+
+        // 2. Guardado rápido local
+        fila.comentario = nuevoTexto;
+        localStorage.setItem(`reporte_sodimac_${cliente.id}`, JSON.stringify(reporteActualEnMemoria));
+
+        // 3. Reiniciamos el reloj
+        clearTimeout(timeoutComentarioPredi);
         
-        if (fila) {
-          fila.comentario = e.target.textContent.trim();
-          localStorage.setItem(`reportePredi_${cliente.id}`, JSON.stringify(reporteActualEnMemoria));
-        }
+        // 4. Si deja de escribir por 1 segundo, lo mandamos a la nube
+        timeoutComentarioPredi = setTimeout(async () => {
+          try {
+            // Buscamos la fila usando client_id, columna_b (LPN) y sku
+            const lpnCodificado = encodeURIComponent(lpnR);
+            const skuCodificado = encodeURIComponent(skuR);
+            const url = `${SUPABASE_URL}/rest/v1/reporte_items?client_id=eq.${cliente.id}&columna_b=eq.${lpnCodificado}&sku=eq.${skuCodificado}`;
+            
+            await fetch(url, {
+              method: "PATCH",
+              headers: { 
+                "Content-Type": "application/json", 
+                "apikey": SUPABASE_ANON_KEY, 
+                "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, 
+                "Prefer": "return=minimal" 
+              },
+              body: JSON.stringify({ comentario: nuevoTexto })
+            });
+
+            console.log(`Comentario Predistribuido guardado en BD para LPN: ${lpnR}`);
+          } catch (error) {
+            console.error("Error al guardar comentario predistribuido en la nube:", error);
+          }
+        }, 1000); 
       }
     });
   }
