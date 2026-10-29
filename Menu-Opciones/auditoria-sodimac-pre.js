@@ -98,26 +98,33 @@ actualizarLoading("Creando nueva carga...");
         email: user?.email || ""
       });
 
-      // --- NUEVA LÓGICA: LISTA DE CÓDIGOS DIVISIÓN ENTRE 50 ---
-      const codigosEspeciales = new Set([
+// --- NUEVA LÓGICA: LISTAS DE CÓDIGOS PARA DIVISIÓN (50 y 4) ---
+      const codigosDiv50 = new Set([
         "HB00460281", "HB00477446", "HB00477447", "HB00477451",
         "HB00460268", "HB00460270", "HB00477449", "HB00460266",
         "HB00460269", "HB00477452", "HB00460267", "HB00477457",
         "HB00477448", "HB00460272", "HB00477455", "HB00477459",
         "HB00477453", "HB00477458", "HB00477445", "HB00460273",
-        "HB00460276", "HB00460277", "HB00460278", "HB00477450",
-        "HB00460271", "HB00460274"
+        "HB00460271", "HB00460274", "HB00477450"
+      ]);
+
+      const codigosDiv4 = new Set([
+        "7000698940" // <-- ¡Aquí está tu nuevo código para dividir entre 4!
+        // , "OTRO_CODIGO" <-- (Así agregas más a futuro, separado por comas)
       ]);
 
       // 2. Mapear datos a la estructura de Supabase (LPN irá en columna_e)
       const items = registros.map((r, index) => {
-        // Limpiamos el SKU (SN) para asegurarnos de que coincida con la lista
+        // Limpiamos el SKU (SN) para asegurarnos de que coincida con las listas
         const snLimpio = String(r.sn || "").trim().toUpperCase();
         
-        // Verificamos si el SKU está en la lista especial
+        // Verificamos si el SKU está en alguna de las listas especiales
         let cantidadFinal = Number(r.cantidad) || 0;
-        if (codigosEspeciales.has(snLimpio)) {
-          cantidadFinal = cantidadFinal / 50; // ¡Aplicamos la división!
+        
+        if (codigosDiv50.has(snLimpio)) {
+          cantidadFinal = cantidadFinal / 50; // ¡Aplica la división entre 50!
+        } else if (codigosDiv4.has(snLimpio)) {
+          cantidadFinal = cantidadFinal / 4;  // ¡Aplica la nueva división entre 4!
         }
 
         return {
