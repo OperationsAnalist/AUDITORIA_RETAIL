@@ -10,9 +10,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  const cliente = JSON.parse(clienteRaw);
+const cliente = JSON.parse(clienteRaw);
   const user = typeof window.getUser === "function" ? window.getUser() : null;
   const rol = String(user?.rol || "").toUpperCase();
+
+  // --- NUEVA CLAVE DE RESPALDO LOCAL ---
+  const STORAGE_KEY = `conteo_backup_${cliente.id}_${user?.email || 'anon'}`;
+  // -------------------------------------
 
   if (rol !== "SUPERADMIN" && rol !== "AUDITOR") {
     window.location.href = "./auditoria-cliente.html";
@@ -94,9 +98,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     await guardarConteo(true);
   });
 
-  conteoBody.addEventListener("keydown", manejarNavegacionEscaner);
+conteoBody.addEventListener("keydown", manejarNavegacionEscaner);
   conteoBody.addEventListener("paste", manejarPegadoExcel);
   conteoBody.addEventListener("focusin", seleccionarContenidoCelda);
+  
+  // --- NUEVOS EVENTOS DE AUTOGUARDADO LOCAL ---
+  conteoBody.addEventListener("input", () => {
+    const items = obtenerItemsTabla();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  });
+
+  conteoBody.addEventListener("blur", () => {
+    const items = obtenerItemsTabla();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  }, true);
+  // ---------------------------------------------
 
   async function cargarConteoExistente() {
     mostrarLoading("Cargando conteo", "Consultando registros del auditor...");
@@ -112,12 +128,38 @@ document.addEventListener("DOMContentLoaded", async () => {
         auditorEmail: user.email
       });
 
-      if (registros && registros.length > 0) {
-        conteoBody.innerHTML = "";
+      conteoBody.innerHTML = "";
 
-registros.forEach((r) => {
+      // --- VERIFICAR SI HAY RESPALDO LOCAL ANTE F5 / CAÍDAS ---
+      const respaldoLocalRaw = localStorage.getItem(STORAGE_KEY);
+      let itemsParaCargar = [];
+
+      if (respaldoLocalRaw) {
+        try {
+          const backupItems = JSON.parse(respaldoLocalRaw);
+          if (backupItems && backupItems.length > 0) {
+            itemsParaCargar = backupItems;
+          }
+        } catch (e) {
+          console.error("Error leyendo respaldo local:", e);
+        }
+      }
+
+      // Si no hay respaldo local, usamos los registros de Supabase
+      if (itemsParaCargar.length === 0 && registros && registros.length > 0) {
+        itemsParaCargar = registros.map((r) => ({
+          id: r.id,
+          tienda: r.tienda,
+          bulto: r.bulto,
+          ean: r.ean,
+          cantidad: r.cantidad
+        }));
+      }
+
+      if (itemsParaCargar.length > 0) {
+        itemsParaCargar.forEach((r) => {
           agregarFila({
-            id: r.id, // <- NUEVO: Pasamos el ID real de Supabase
+            id: r.id || null,
             tienda: r.tienda,
             bulto: r.bulto,
             ean: r.ean,
@@ -125,13 +167,17 @@ registros.forEach((r) => {
           });
         });
 
-        if (registros.length < 50) {
-          agregarFilas(50 - registros.length);
+        if (itemsParaCargar.length < 50) {
+          agregarFilas(50 - itemsParaCargar.length);
         }
+      } else {
+        agregarFilas(50);
       }
 
     } catch (error) {
       console.error("Error cargando conteo existente:", error);
+      conteoBody.innerHTML = "";
+      agregarFilas(50);
 
       mostrarModal(
         "Aviso",
@@ -176,6 +222,10 @@ registros.forEach((r) => {
       });
 
       loteActual = resultado.lote;
+
+      // --- LIMPIAR RESPALDO LOCAL AL GUARDAR CON ÉXITO ---
+      localStorage.removeItem(STORAGE_KEY);
+      // --------------------------------------------------
 
 if (finalizar) {
         actualizarLoading("Marcando lote como finalizado...");
