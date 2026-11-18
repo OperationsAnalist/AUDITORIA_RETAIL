@@ -119,7 +119,7 @@ async function cargarConteoExistente() {
     }
   }
 
-  async function guardarConteo(finalizar) {
+async function guardarConteo(finalizar) {
     const items = obtenerItemsTabla();
     if (!items.length) return mostrarModal("Sin registros", "Debe ingresar al menos un EAN.", "error");
 
@@ -129,6 +129,10 @@ async function cargarConteoExistente() {
     try {
       const resultado = await window.guardarConteoAuditor({ clientId: cliente.id, auditorEmail: user.email, items });
       loteActual = resultado.lote;
+
+      // --- NUEVO: LIMPIAR EL BORRADOR LOCAL AL GUARDAR CON ÉXITO ---
+      localStorage.removeItem(`borrador_conteo_sodimac_${cliente.id}_${user.email}`);
+      // -------------------------------------------------------------
 
       if (finalizar) {
         actualizarLoading("Marcando como finalizado...");
@@ -142,6 +146,7 @@ async function cargarConteoExistente() {
       ocultarLoading();
       mostrarModal(finalizar ? "Conteo finalizado" : "Conteo guardado", `Registros guardados: ${resultado.insertados}.`, "success");
     } catch (error) {
+      ...
       ocultarLoading();
       mostrarModal("Error", error.message, "error");
     } finally {
