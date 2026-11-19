@@ -75,40 +75,43 @@ document.addEventListener("DOMContentLoaded", async () => {
   // --- FUNCIONES PRINCIPALES ---
 async function cargarConteoExistente() {
     mostrarLoading("Cargando conteo", "Consultando registros del auditor...");
-    try {
-      loteActual = await window.getOrCreateConteoLote({ clientId: cliente.id, auditorEmail: user.email });
-      
-      // 1. Revisar si hay un borrador offline
-      const borrador = localStorage.getItem(`borrador_conteo_sodimac_${cliente.id}_${user.email}`);
-      let registros = [];
+    const keyBorrador = `borrador_conteo_sodimac_${cliente.id}_${user.email}`;
+    let registros = [];
 
+    try {
+      // 1. Leer primero el borrador local (funciona incluso sin internet)
+      const borrador = localStorage.getItem(keyBorrador);
       if (borrador) {
-        registros = JSON.parse(borrador); // Prioridad al borrador local
-        // Transformar la estructura del borrador (tienda, bulto) a la visual (lpn, paleta)
-        registros = registros.map(r => ({
+        registros = JSON.parse(borrador).map(r => ({
           paleta: r.bulto,
           lpn: r.tienda,
           ean: r.ean,
           cantidad: r.cantidad
         }));
-      } else {
-        // 2. Si no hay borrador, descargar de Supabase
-        const datosNube = await window.getConteoAuditor({ clientId: cliente.id, auditorEmail: user.email });
-        registros = datosNube.map(r => ({
-          id: r.id,
-          paleta: r.bulto, 
-          lpn: r.tienda,   
-          ean: r.ean,
-          cantidad: r.cantidad
-        }));
+      }
+
+      // 2. Consultar Supabase en bloque separado para que una caída de red no borre el respaldo local
+      try {
+        loteActual = await window.getOrCreateConteoLote({ clientId: cliente.id, auditorEmail: user.email });
+
+        if (registros.length === 0) {
+          const datosNube = await window.getConteoAuditor({ clientId: cliente.id, auditorEmail: user.email });
+          registros = datosNube.map(r => ({
+            id: r.id,
+            paleta: r.bulto,
+            lpn: r.tienda,
+            ean: r.ean,
+            cantidad: r.cantidad
+          }));
+        }
+      } catch (errorRed) {
+        console.warn("Sin conexión a Supabase; trabajando con respaldo local:", errorRed);
       }
 
       // 3. Pintar los datos
       if (registros && registros.length > 0) {
         conteoBody.innerHTML = "";
-        registros.forEach((r) => {
-          agregarFila(r);
-        });
+        registros.forEach((r) => agregarFila(r));
         if (registros.length < 50) agregarFilas(50 - registros.length);
       }
     } catch (error) {
@@ -436,13 +439,21 @@ async function ejecutarAutoguardado() {
     }
   }
 
-  // Escuchar todos los cambios en la tabla
+// Escuchar todos los cambios en la tabla
   conteoBody.addEventListener("input", (e) => {
     if (e.target.hasAttribute("contenteditable")) {
-      // Reiniciar el contador si sigue escribiendo
+      // Respaldo inmediato en navegador ante F5 o cierre brusco
+      const itemsActuales = obtenerItemsTabla();
+      const keyBorrador = `borrador_conteo_sodimac_${cliente.id}_${user.email}`;
+      if (itemsActuales.length > 0) {
+        localStorage.setItem(keyBorrador, JSON.stringify(itemsActuales));
+      } else {
+        localStorage.removeItem(keyBorrador);
+      }
+
+      // Subida silenciosa a Supabase 1 segundo después de pausar la escritura
       clearTimeout(timeoutAutoguardado);
-      // Ejecutar el guardado 1 segundo después de que deje de escribir
-      timeoutAutoguardado = setTimeout(ejecutarAutoguardado, 1000); 
+      timeoutAutoguardado = setTimeout(ejecutarAutoguardado, 1000);
     }
   });
 
