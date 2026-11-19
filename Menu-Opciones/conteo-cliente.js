@@ -102,93 +102,94 @@ conteoBody.addEventListener("keydown", manejarNavegacionEscaner);
   conteoBody.addEventListener("paste", manejarPegadoExcel);
   conteoBody.addEventListener("focusin", seleccionarContenidoCelda);
   
-  // --- NUEVOS EVENTOS DE AUTOGUARDADO LOCAL ---
-  conteoBody.addEventListener("input", () => {
+function guardarRespaldoLocal() {
     const items = obtenerItemsTabla();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  });
+    if (items.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }
 
-  conteoBody.addEventListener("blur", () => {
-    const items = obtenerItemsTabla();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  }, true);
+  // --- NUEVOS EVENTOS DE AUTOGUARDADO LOCAL ---
+  conteoBody.addEventListener("input", guardarRespaldoLocal);
+  conteoBody.addEventListener("blur", guardarRespaldoLocal, true);
   // ---------------------------------------------
 
   async function cargarConteoExistente() {
     mostrarLoading("Cargando conteo", "Consultando registros del auditor...");
 
+    let itemsParaCargar = [];
+
+    // 1. Leer primero el respaldo local (sobrevive a caídas de red + F5)
+    const respaldoLocalRaw = localStorage.getItem(STORAGE_KEY);
+    if (respaldoLocalRaw) {
+      try {
+        const backupItems = JSON.parse(respaldoLocalRaw);
+        if (backupItems && backupItems.length > 0) {
+          itemsParaCargar = backupItems;
+        }
+      } catch (e) {
+        console.error("Error leyendo respaldo local:", e);
+      }
+    }
+
+    // 2. Intentar conectar con Supabase sin perder el respaldo local si falla la red
     try {
       loteActual = await window.getOrCreateConteoLote({
         clientId: cliente.id,
         auditorEmail: user.email
       });
 
-      const registros = await window.getConteoAuditor({
-        clientId: cliente.id,
-        auditorEmail: user.email
-      });
+      if (itemsParaCargar.length === 0) {
+        const registros = await window.getConteoAuditor({
+          clientId: cliente.id,
+          auditorEmail: user.email
+        });
 
-      conteoBody.innerHTML = "";
-
-      // --- VERIFICAR SI HAY RESPALDO LOCAL ANTE F5 / CAÍDAS ---
-      const respaldoLocalRaw = localStorage.getItem(STORAGE_KEY);
-      let itemsParaCargar = [];
-
-      if (respaldoLocalRaw) {
-        try {
-          const backupItems = JSON.parse(respaldoLocalRaw);
-          if (backupItems && backupItems.length > 0) {
-            itemsParaCargar = backupItems;
-          }
-        } catch (e) {
-          console.error("Error leyendo respaldo local:", e);
-        }
-      }
-
-      // Si no hay respaldo local, usamos los registros de Supabase
-      if (itemsParaCargar.length === 0 && registros && registros.length > 0) {
-        itemsParaCargar = registros.map((r) => ({
-          id: r.id,
-          tienda: r.tienda,
-          bulto: r.bulto,
-          ean: r.ean,
-          cantidad: r.cantidad
-        }));
-      }
-
-      if (itemsParaCargar.length > 0) {
-        itemsParaCargar.forEach((r) => {
-          agregarFila({
-            id: r.id || null,
+        if (registros && registros.length > 0) {
+          itemsParaCargar = registros.map((r) => ({
+            id: r.id,
             tienda: r.tienda,
             bulto: r.bulto,
             ean: r.ean,
             cantidad: r.cantidad
-          });
-        });
-
-        if (itemsParaCargar.length < 50) {
-          agregarFilas(50 - itemsParaCargar.length);
+          }));
         }
-      } else {
-        agregarFilas(50);
       }
-
     } catch (error) {
-      console.error("Error cargando conteo existente:", error);
-      conteoBody.innerHTML = "";
-      agregarFilas(50);
-
-      mostrarModal(
-        "Aviso",
-        "No se pudo consultar conteo previo. Puede continuar registrando nuevas líneas.",
-        "error"
-      );
-
-    } finally {
-      ocultarLoading();
-      enfocarPrimerEAN();
+      console.error("Error consultando Supabase (usando respaldo local si existe):", error);
+      if (itemsParaCargar.length === 0) {
+        mostrarModal(
+          "Aviso",
+          "No se pudo consultar conteo previo. Puede continuar registrando nuevas líneas.",
+          "error"
+        );
+      }
     }
+
+    // 3. Pintar filas en pantalla
+    conteoBody.innerHTML = "";
+    if (itemsParaCargar.length > 0) {
+      itemsParaCargar.forEach((r) => {
+        agregarFila({
+          id: r.id || null,
+          tienda: r.tienda,
+          bulto: r.bulto,
+          ean: r.ean,
+          cantidad: r.cantidad
+        });
+      });
+
+      if (itemsParaCargar.length < 50) {
+        agregarFilas(50 - itemsParaCargar.length);
+      }
+    } else {
+      agregarFilas(50);
+    }
+
+    ocultarLoading();
+    enfocarPrimerEAN();
   }
 
   async function guardarConteo(finalizar) {
