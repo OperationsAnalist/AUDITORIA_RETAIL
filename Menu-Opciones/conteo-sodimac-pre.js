@@ -143,10 +143,10 @@ async function guardarConteo(finalizar) {
         await window.registrarLog(`CLIENTE_${cliente.id}`, 'REGISTRO_CONTEO', user?.nombre || user?.email || 'Desconocido');
       }
 
-      ocultarLoading();
+ocultarLoading();
       mostrarModal(finalizar ? "Conteo finalizado" : "Conteo guardado", `Registros guardados: ${resultado.insertados}.`, "success");
     } catch (error) {
-      ...
+      console.error("Error guardando conteo:", error);
       ocultarLoading();
       mostrarModal("Error", error.message, "error");
     } finally {
@@ -288,10 +288,11 @@ function manejarPegadoExcel(event) {
 
     const tieneTabs = texto.includes("\t");
 
-    // CASO 1: Pegado simple de una sola celda
+// CASO 1: Pegado simple de una sola celda
     if (!tieneTabs) {
       let valorLimpio = texto.replace(/\r?\n/g, " ").trim();
       target.textContent = valorLimpio;
+      ejecutarAutoguardado();
       if (target.dataset.field === "ean") moverASiguienteFilaEAN(target);
       return;
     }
@@ -328,12 +329,14 @@ function manejarPegadoExcel(event) {
       rowActualIndex++;
     });
     
-    // Al terminar de pegar, movemos el cursor al final de la lista para comodidad del usuario
+// Al terminar de pegar, movemos el cursor al final de la lista para comodidad del usuario
     const ultimaFila = conteoBody.children[rowActualIndex];
     if (ultimaFila) {
       const celdaPaleta = ultimaFila.querySelector('[data-field="paleta"]');
       if (celdaPaleta) celdaPaleta.focus();
     }
+
+    ejecutarAutoguardado();
   }
 
   // --- UTILIDADES ---
@@ -394,9 +397,12 @@ function manejarPegadoExcel(event) {
 // --- AUTOGUARDADO EN TIEMPO REAL ---
   let timeoutAutoguardado = null;
 
-  async function ejecutarAutoguardado() {
+async function ejecutarAutoguardado() {
     const items = obtenerItemsTabla();
-    if (!items.length) return;
+    if (!items.length) {
+      localStorage.removeItem(`borrador_conteo_sodimac_${cliente.id}_${user.email}`);
+      return;
+    }
 
     // 1. Guardar en memoria local (Offline Inmediato)
     localStorage.setItem(`borrador_conteo_sodimac_${cliente.id}_${user.email}`, JSON.stringify(items));
