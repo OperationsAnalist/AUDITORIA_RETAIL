@@ -36,7 +36,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   const confirmCancelBtn = document.getElementById("confirmCancelBtn");
   const confirmAcceptBtn = document.getElementById("confirmAcceptBtn");
 
-  let loteActual = null;
+let loteActual = null;
+  const KEY_BORRADOR = `borrador_conteo_sodimac_${cliente.id}_${user.email}`;
+  const timersPorFila = new WeakMap();
 
   // 1. CARGAR LOGO Y TÍTULO
   if (clienteLogo) {
@@ -75,26 +77,30 @@ document.addEventListener("DOMContentLoaded", async () => {
   // --- FUNCIONES PRINCIPALES ---
 async function cargarConteoExistente() {
     mostrarLoading("Cargando conteo", "Consultando registros del auditor...");
-    const keyBorrador = `borrador_conteo_sodimac_${cliente.id}_${user.email}`;
     let registros = [];
+    let vieneDeBorradorOffline = false;
 
     try {
-      // 1. Leer primero el borrador local (funciona incluso sin internet)
-      const borrador = localStorage.getItem(keyBorrador);
+      const borrador = localStorage.getItem(KEY_BORRADOR);
       if (borrador) {
-        registros = JSON.parse(borrador).map(r => ({
-          paleta: r.bulto,
-          lpn: r.tienda,
-          ean: r.ean,
-          cantidad: r.cantidad
-        }));
+        const parsed = JSON.parse(borrador);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          vieneDeBorradorOffline = true;
+          registros = parsed.map(r => ({
+            id: r.id || null,
+            paleta: r.paleta !== undefined ? r.paleta : r.bulto,
+            lpn: r.lpn !== undefined ? r.lpn : r.tienda,
+            ean: r.ean,
+            cantidad: r.cantidad,
+            dirty: r.dirty ? "1" : ""
+          }));
+        }
       }
 
-      // 2. Consultar Supabase en bloque separado para que una caída de red no borre el respaldo local
       try {
         loteActual = await window.getOrCreateConteoLote({ clientId: cliente.id, auditorEmail: user.email });
 
-        if (registros.length === 0) {
+        if (!vieneDeBorradorOffline) {
           const datosNube = await window.getConteoAuditor({ clientId: cliente.id, auditorEmail: user.email });
           registros = datosNube.map(r => ({
             id: r.id,
@@ -108,11 +114,19 @@ async function cargarConteoExistente() {
         console.warn("Sin conexión a Supabase; trabajando con respaldo local:", errorRed);
       }
 
-      // 3. Pintar los datos
       if (registros && registros.length > 0) {
         conteoBody.innerHTML = "";
-        registros.forEach((r) => agregarFila(r));
+        registros.forEach((r) => {
+          const tr = agregarFila(r);
+          if (r.dirty === "1" || (!r.id && r.ean)) {
+            tr.dataset.dirty = "1";
+          }
+        });
         if (registros.length < 50) agregarFilas(50 - registros.length);
+
+        if (vieneDeBorradorOffline) {
+          sincronizarFilasPendientes();
+        }
       }
     } catch (error) {
       console.error("Error cargando conteo:", error);
@@ -126,16 +140,17 @@ async function guardarConteo(finalizar) {
     const items = obtenerItemsTabla();
     if (!items.length) return mostrarModal("Sin registros", "Debe ingresar al menos un EAN.", "error");
 
+    guardandoManual = true;
     bloquearBotones(true);
-    mostrarLoading(finalizar ? "Finalizando conteo" : "Guardando conteo", "Enviando registros...");
+    mostrarLoading(finalizar ? "Finalizando conteo" : "Guardando conteo", "Sincronizando registros en Supabase...");
 
     try {
+      await esperarGuardadosEnCurso();
+
       const resultado = await window.guardarConteoAuditor({ clientId: cliente.id, auditorEmail: user.email, items });
       loteActual = resultado.lote;
 
-      // --- NUEVO: LIMPIAR EL BORRADOR LOCAL AL GUARDAR CON ÉXITO ---
-      localStorage.removeItem(`borrador_conteo_sodimac_${cliente.id}_${user.email}`);
-      // -------------------------------------------------------------
+      localStorage.removeItem(STORAGE_KEY);
 
       if (finalizar) {
         actualizarLoading("Marcando como finalizado...");
@@ -146,17 +161,20 @@ async function guardarConteo(finalizar) {
         await window.registrarLog(`CLIENTE_${cliente.id}`, 'REGISTRO_CONTEO', user?.nombre || user?.email || 'Desconocido');
       }
 
-ocultarLoading();
+      // Actualizar los nuevos IDs en el DOM para seguir editando fila por fila sin desfase
+      await sincronizarIdsPostGuardado();
+
+      ocultarLoading();
       mostrarModal(finalizar ? "Conteo finalizado" : "Conteo guardado", `Registros guardados: ${resultado.insertados}.`, "success");
     } catch (error) {
       console.error("Error guardando conteo:", error);
       ocultarLoading();
       mostrarModal("Error", error.message, "error");
     } finally {
+      guardandoManual = false;
       bloquearBotones(false);
     }
   }
-
   function agregarFilas(cantidad) {
     for (let i = 0; i < cantidad; i++) agregarFila();
   }
@@ -164,7 +182,7 @@ ocultarLoading();
   function agregarFila(data = {}) {
     const tr = document.createElement("tr");
     if (data.id) tr.dataset.id = data.id;
-
+    if (data.syncPendiente) tr.dataset.syncPendiente = "true";
     // APLICAMOS LAS NUEVAS CABECERAS PREDISTRIBUIDAS
     const campos = [
       { field: "paleta", placeholder: "Paleta", value: data.paleta },
@@ -195,15 +213,15 @@ ocultarLoading();
         try {
           await window.eliminarConteoItem(tr.dataset.id);
           tr.remove();
+          guardarRespaldoLocal();
           ocultarLoading();
-          ejecutarAutoguardado(); // <-- NUEVO: Dispara el autoguardado
         } catch (error) {
           ocultarLoading();
           mostrarModal("Error", error.message, "error");
         }
       } else {
         tr.remove();
-        ejecutarAutoguardado(); // <-- NUEVO: Dispara el autoguardado
+        guardarRespaldoLocal();
       }
     });
 
@@ -295,7 +313,10 @@ function manejarPegadoExcel(event) {
     if (!tieneTabs) {
       let valorLimpio = texto.replace(/\r?\n/g, " ").trim();
       target.textContent = valorLimpio;
-      ejecutarAutoguardado();
+      const trActual = target.parentElement;
+      trActual.dataset.syncPendiente = "true";
+      guardarRespaldoLocal();
+      sincronizarFila(trActual);
       if (target.dataset.field === "ean") moverASiguienteFilaEAN(target);
       return;
     }
@@ -305,12 +326,11 @@ function manejarPegadoExcel(event) {
     const filaInicial = target.parentElement;
     const colInicialFisica = Array.from(filaInicial.children).indexOf(target);
     let rowActualIndex = Array.from(conteoBody.children).indexOf(filaInicial);
+    const filasAfectadas = [];
 
     filasPegadas.forEach((filaTexto, i) => {
-      // Excel siempre deja un salto de línea vacío al final de la copia, lo ignoramos para no crear filas fantasma
       if (i === filasPegadas.length - 1 && filaTexto.trim() === "") return;
 
-      // Si nos quedamos sin filas visuales, agregamos más en bloques de 50 automáticamente
       while (conteoBody.children.length <= rowActualIndex) {
         agregarFilas(50);
       }
@@ -320,28 +340,26 @@ function manejarPegadoExcel(event) {
 
       columnas.forEach((valorCelda, cIndex) => {
         const td = tr.children[colInicialFisica + cIndex];
-        
-        // Verificamos que la celda destino exista y sea editable (evita sobreescribir el botón "X")
         if (td && td.getAttribute("contenteditable") === "true") {
-          // Limpiamos comillas residuales de Excel y quitamos espacios en los extremos
           let valorLimpio = valorCelda.replace(/^"|"$/g, '').trim();
           td.textContent = valorLimpio;
         }
       });
-      
+
+      tr.dataset.syncPendiente = "true";
+      filasAfectadas.push(tr);
       rowActualIndex++;
     });
-    
-// Al terminar de pegar, movemos el cursor al final de la lista para comodidad del usuario
+
     const ultimaFila = conteoBody.children[rowActualIndex];
     if (ultimaFila) {
       const celdaPaleta = ultimaFila.querySelector('[data-field="paleta"]');
       if (celdaPaleta) celdaPaleta.focus();
     }
 
-    ejecutarAutoguardado();
+    guardarRespaldoLocal();
+    sincronizarMultiplesFilas(filasAfectadas);
   }
-
   // --- UTILIDADES ---
   function seleccionarContenidoCelda(event) {
     if (event.target && event.target.getAttribute("contenteditable") === "true") seleccionarTexto(event.target);
@@ -397,63 +415,260 @@ function manejarPegadoExcel(event) {
     });
   }
 
-// --- AUTOGUARDADO EN TIEMPO REAL ---
-  let timeoutAutoguardado = null;
+// --- AUTOGUARDADO FILA POR FILA EN SUPABASE + RESPALDO LOCAL ---
+  function actualizarIndicador(texto, color) {
+    const el = document.getElementById("indicadorAutoguardado");
+    if (el) {
+      el.textContent = texto;
+      el.style.color = color;
+    }
+  }
 
-async function ejecutarAutoguardado() {
-    const items = obtenerItemsTabla();
-    if (!items.length) {
-      localStorage.removeItem(`borrador_conteo_sodimac_${cliente.id}_${user.email}`);
+  function extraerDatosFila(tr) {
+    const filas = Array.from(conteoBody.querySelectorAll("tr"));
+    const idx = filas.indexOf(tr);
+
+    let paleta = limpiarTexto(tr.querySelector('[data-field="paleta"]')?.textContent);
+    let lpn = limpiarTexto(tr.querySelector('[data-field="lpn"]')?.textContent);
+    const ean = limpiarTexto(tr.querySelector('[data-field="ean"]')?.textContent);
+    let cantidad = convertirNumero(tr.querySelector('[data-field="cantidad"]')?.textContent);
+
+    if (!paleta) {
+      for (let i = idx - 1; i >= 0; i--) {
+        const val = limpiarTexto(filas[i].querySelector('[data-field="paleta"]')?.textContent);
+        if (val) { paleta = val; break; }
+      }
+    }
+    if (!lpn) {
+      for (let i = idx - 1; i >= 0; i--) {
+        const val = limpiarTexto(filas[i].querySelector('[data-field="lpn"]')?.textContent);
+        if (val) { lpn = val; break; }
+      }
+    }
+    if (cantidad <= 0 && cantidad !== null) cantidad = null;
+
+    return { bulto: paleta, tienda: lpn, ean, cantidad };
+  }
+
+  function guardarRespaldoLocal() {
+    const filas = Array.from(conteoBody.querySelectorAll("tr"));
+    const borrador = [];
+
+    filas.forEach((tr) => {
+      const paleta = limpiarTexto(tr.querySelector('[data-field="paleta"]')?.textContent);
+      const lpn = limpiarTexto(tr.querySelector('[data-field="lpn"]')?.textContent);
+      const ean = limpiarTexto(tr.querySelector('[data-field="ean"]')?.textContent);
+      const cantidad = convertirNumero(tr.querySelector('[data-field="cantidad"]')?.textContent);
+
+      if (!paleta && !lpn && !ean && cantidad === null) return;
+
+      borrador.push({
+        id: tr.dataset.id || null,
+        syncPendiente: tr.dataset.syncPendiente === "true",
+        paleta,
+        lpn,
+        ean,
+        cantidad
+      });
+    });
+
+    if (borrador.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(borrador));
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }
+
+  async function sincronizarFila(tr) {
+    if (!tr || !tr.isConnected || guardandoManual) return;
+
+    if (tr._guardando) {
+      tr._pendienteReintento = true;
       return;
     }
 
-    // 1. Guardar en memoria local (Offline Inmediato)
-    localStorage.setItem(`borrador_conteo_sodimac_${cliente.id}_${user.email}`, JSON.stringify(items));
+    const datos = extraerDatosFila(tr);
+    if (!datos.ean) return;
 
-    // 2. Mostrar indicador visual pequeño (Opcional, si tienes un elemento para esto)
-    if (document.getElementById("indicadorAutoguardado")) {
-      document.getElementById("indicadorAutoguardado").textContent = "Guardando...";
-      document.getElementById("indicadorAutoguardado").style.color = "#ca8a04"; // Amarillo
-    }
+    tr._guardando = true;
+    tr._pendienteReintento = false;
+    guardadosActivos++;
+    actualizarIndicador("Guardando...", "#ca8a04");
 
-    // 3. Subir a Supabase de forma silenciosa
     try {
-      const resultado = await window.guardarConteoAuditor({ 
-        clientId: cliente.id, 
-        auditorEmail: user.email, 
-        items 
-      });
-      
-      loteActual = resultado.lote;
-
-      if (document.getElementById("indicadorAutoguardado")) {
-        document.getElementById("indicadorAutoguardado").textContent = "Guardado";
-        document.getElementById("indicadorAutoguardado").style.color = "#16a34a"; // Verde
+      if (!loteActual) {
+        loteActual = await window.getOrCreateConteoLote({
+          clientId: cliente.id,
+          auditorEmail: user.email
+        });
       }
+
+      if (tr.dataset.id) {
+        await window.actualizarConteoItem(tr.dataset.id, {
+          tienda: datos.tienda,
+          bulto: datos.bulto,
+          ean: datos.ean,
+          cantidad: datos.cantidad
+        });
+      } else {
+        const creado = await window.insertarConteoItemRetorno({
+          conteo_lote_id: loteActual.id,
+          client_id: cliente.id,
+          auditor_email: user.email,
+          tienda: datos.tienda,
+          bulto: datos.bulto,
+          ean: datos.ean,
+          cantidad: datos.cantidad
+        });
+        if (creado && creado.id) {
+          tr.dataset.id = creado.id;
+        }
+      }
+
+      delete tr.dataset.syncPendiente;
+      guardarRespaldoLocal();
+      actualizarIndicador("Guardado en nube ✓", "#16a34a");
     } catch (error) {
-      console.error("Autoguardado falló:", error);
-      if (document.getElementById("indicadorAutoguardado")) {
-        document.getElementById("indicadorAutoguardado").textContent = "Offline (Guardado localmente)";
-        document.getElementById("indicadorAutoguardado").style.color = "#dc2626"; // Rojo
+      console.error("Error guardando fila en Supabase:", error);
+      tr.dataset.syncPendiente = "true";
+      guardarRespaldoLocal();
+      actualizarIndicador("Offline (Respaldo local)", "#dc2626");
+    } finally {
+      guardadosActivos--;
+      tr._guardando = false;
+      if (tr._pendienteReintento && !guardandoManual) {
+        await sincronizarFila(tr);
       }
     }
   }
 
-// Escuchar todos los cambios en la tabla
-  conteoBody.addEventListener("input", (e) => {
-    if (e.target.hasAttribute("contenteditable")) {
-      // Respaldo inmediato en navegador ante F5 o cierre brusco
-      const itemsActuales = obtenerItemsTabla();
-      const keyBorrador = `borrador_conteo_sodimac_${cliente.id}_${user.email}`;
-      if (itemsActuales.length > 0) {
-        localStorage.setItem(keyBorrador, JSON.stringify(itemsActuales));
-      } else {
-        localStorage.removeItem(keyBorrador);
-      }
+  async function sincronizarMultiplesFilas(filas) {
+    if (!filas || !filas.length || guardandoManual) return;
 
-      // Subida silenciosa a Supabase 1 segundo después de pausar la escritura
-      clearTimeout(timeoutAutoguardado);
-      timeoutAutoguardado = setTimeout(ejecutarAutoguardado, 1000);
+    const nuevas = [];
+    const existentes = [];
+
+    filas.forEach((tr) => {
+      const datos = extraerDatosFila(tr);
+      if (!datos.ean) return;
+      if (tr.dataset.id) existentes.push(tr);
+      else nuevas.push({ tr, datos });
+    });
+
+    if (nuevas.length > 0) {
+      guardadosActivos++;
+      actualizarIndicador("Guardando bloque...", "#ca8a04");
+      try {
+        if (!loteActual) {
+          loteActual = await window.getOrCreateConteoLote({
+            clientId: cliente.id,
+            auditorEmail: user.email
+          });
+        }
+
+        const chunkSize = 500;
+        for (let i = 0; i < nuevas.length; i += chunkSize) {
+          const loteChunk = nuevas.slice(i, i + chunkSize);
+          const payload = loteChunk.map(({ datos }) => ({
+            conteo_lote_id: loteActual.id,
+            client_id: cliente.id,
+            auditor_email: user.email,
+            tienda: datos.tienda,
+            bulto: datos.bulto,
+            ean: datos.ean,
+            cantidad: datos.cantidad
+          }));
+
+          const insertados = await window.insertarConteoItemRetorno(payload);
+          loteChunk.forEach(({ tr }, idx) => {
+            if (insertados && insertados[idx] && insertados[idx].id) {
+              tr.dataset.id = insertados[idx].id;
+              delete tr.dataset.syncPendiente;
+            }
+          });
+        }
+        guardarRespaldoLocal();
+        actualizarIndicador("Guardado en nube ✓", "#16a34a");
+      } catch (error) {
+        console.error("Error guardando pegado en Supabase:", error);
+        nuevas.forEach(({ tr }) => { tr.dataset.syncPendiente = "true"; });
+        guardarRespaldoLocal();
+        actualizarIndicador("Offline (Respaldo local)", "#dc2626");
+      } finally {
+        guardadosActivos--;
+      }
+    }
+
+    for (const tr of existentes) {
+      await sincronizarFila(tr);
+    }
+  }
+
+  async function sincronizarPendientes() {
+    if (guardandoManual) return;
+    const filasPendientes = Array.from(conteoBody.querySelectorAll("tr")).filter((tr) => {
+      const ean = limpiarTexto(tr.querySelector('[data-field="ean"]')?.textContent);
+      return ean !== "" && (!tr.dataset.id || tr.dataset.syncPendiente === "true");
+    });
+    if (filasPendientes.length > 0) {
+      await sincronizarMultiplesFilas(filasPendientes);
+    }
+  }
+
+  async function esperarGuardadosEnCurso() {
+    Array.from(conteoBody.querySelectorAll("tr")).forEach((tr) => {
+      if (tr._debounceTimer) clearTimeout(tr._debounceTimer);
+    });
+    let intentos = 0;
+    while (guardadosActivos > 0 && intentos < 50) {
+      await esperar(100);
+      intentos++;
+    }
+  }
+
+  async function sincronizarIdsPostGuardado() {
+    try {
+      const datosNube = await window.getConteoAuditor({ clientId: cliente.id, auditorEmail: user.email });
+      const filasConEan = Array.from(conteoBody.querySelectorAll("tr")).filter(
+        tr => limpiarTexto(tr.querySelector('[data-field="ean"]')?.textContent) !== ""
+      );
+      filasConEan.forEach((tr, idx) => {
+        if (datosNube[idx]) {
+          tr.dataset.id = datosNube[idx].id;
+          delete tr.dataset.syncPendiente;
+        }
+      });
+    } catch (e) {
+      console.warn("No se pudieron refrescar IDs tras guardar:", e);
+    }
+  }
+
+  // Respaldo instantáneo al digitar + envío a Supabase 400ms después
+  conteoBody.addEventListener("input", (e) => {
+    if (!e.target.hasAttribute("contenteditable")) return;
+    const tr = e.target.parentElement;
+    tr.dataset.syncPendiente = "true";
+    guardarRespaldoLocal();
+
+    clearTimeout(tr._debounceTimer);
+    tr._debounceTimer = setTimeout(() => sincronizarFila(tr), 400);
+  });
+
+  // Envío inmediato al salir de la celda (o cuando el escáner presiona Enter)
+  conteoBody.addEventListener("blur", (e) => {
+    if (!e.target || e.target.getAttribute("contenteditable") !== "true") return;
+    const tr = e.target.parentElement;
+    clearTimeout(tr._debounceTimer);
+    if (tr.dataset.syncPendiente === "true") {
+      sincronizarFila(tr);
+    }
+  }, true);
+
+  // Re-sincronizar automáticamente si vuelve el Wi-Fi o se desbloquea la tablet
+  window.addEventListener("online", sincronizarPendientes);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      sincronizarPendientes();
     }
   });
 
