@@ -743,5 +743,25 @@ if (!response.ok) {
     return data.length > 0 ? data[0] : null;
   };
 
-})();
+  window.insertarConteoItemRetorno = async function (payload) {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/conteo_items`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        "Prefer": "return=representation"
+      },
+      body: JSON.stringify(payload)
+    });
 
+    const txt = await response.text();
+    if (!response.ok) {
+      throw new Error("Error insertando registro en Conteo: " + txt);
+    }
+
+    const data = txt ? JSON.parse(txt) : [];
+    return Array.isArray(payload) ? data : (data[0] || null);
+  };
+
+})();
