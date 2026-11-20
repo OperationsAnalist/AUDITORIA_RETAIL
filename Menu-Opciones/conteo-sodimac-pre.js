@@ -37,8 +37,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   const confirmAcceptBtn = document.getElementById("confirmAcceptBtn");
 
 let loteActual = null;
-  const KEY_BORRADOR = `borrador_conteo_sodimac_${cliente.id}_${user.email}`;
-  const timersPorFila = new WeakMap();
+  const STORAGE_KEY = `borrador_conteo_sodimac_${cliente.id}_${user?.email || "anon"}`;
+  let guardandoManual = false;
+  let guardadosActivos = 0;
 
   // 1. CARGAR LOGO Y TÍTULO
   if (clienteLogo) {
@@ -77,65 +78,88 @@ let loteActual = null;
   // --- FUNCIONES PRINCIPALES ---
 async function cargarConteoExistente() {
     mostrarLoading("Cargando conteo", "Consultando registros del auditor...");
-    let registros = [];
-    let vieneDeBorradorOffline = false;
+
+    let borradorItems = [];
+    const borradorRaw = localStorage.getItem(STORAGE_KEY);
+    if (borradorRaw) {
+      try {
+        const parsed = JSON.parse(borradorRaw);
+        if (Array.isArray(parsed)) {
+          borradorItems = parsed.map(r => ({
+            id: r.id || null,
+            paleta: r.paleta !== undefined ? r.paleta : (r.bulto || ""),
+            lpn: r.lpn !== undefined ? r.lpn : (r.tienda || ""),
+            ean: r.ean || "",
+            cantidad: r.cantidad ?? null,
+            syncPendiente: Boolean(r.syncPendiente || r.dirty === "1" || !r.id)
+          }));
+        }
+      } catch (e) {
+        console.error("Error leyendo borrador local:", e);
+      }
+    }
+
+    let datosNube = [];
+    let nubeOk = false;
 
     try {
-      const borrador = localStorage.getItem(KEY_BORRADOR);
-      if (borrador) {
-        const parsed = JSON.parse(borrador);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          vieneDeBorradorOffline = true;
-          registros = parsed.map(r => ({
-            id: r.id || null,
-            paleta: r.paleta !== undefined ? r.paleta : r.bulto,
-            lpn: r.lpn !== undefined ? r.lpn : r.tienda,
-            ean: r.ean,
-            cantidad: r.cantidad,
-            dirty: r.dirty ? "1" : ""
-          }));
+      loteActual = await window.getOrCreateConteoLote({ clientId: cliente.id, auditorEmail: user.email });
+      datosNube = await window.getConteoAuditor({ clientId: cliente.id, auditorEmail: user.email });
+      nubeOk = true;
+    } catch (errorRed) {
+      console.warn("Sin conexión a Supabase; trabajando con respaldo local:", errorRed);
+    }
+
+    let registros = [];
+    if (nubeOk) {
+      const pendientesPorId = new Map();
+      const nuevosSinId = [];
+
+      borradorItems.forEach((b) => {
+        if (b.id && b.syncPendiente) {
+          pendientesPorId.set(String(b.id), b);
+        } else if (!b.id) {
+          nuevosSinId.push(b);
         }
+      });
+
+      registros = datosNube.map((n) => {
+        const localEdit = pendientesPorId.get(String(n.id));
+        if (localEdit) return { ...localEdit, id: n.id, syncPendiente: true };
+        return {
+          id: n.id,
+          paleta: n.bulto,
+          lpn: n.tienda,
+          ean: n.ean,
+          cantidad: n.cantidad,
+          syncPendiente: false
+        };
+      });
+
+      nuevosSinId.forEach((b) => registros.push({ ...b, syncPendiente: true }));
+    } else {
+      registros = borradorItems;
+    }
+
+    conteoBody.innerHTML = "";
+    if (registros.length > 0) {
+      registros.forEach((r) => agregarFila(r));
+      if (registros.length < 50) {
+        agregarFilas(50 - registros.length);
+      } else {
+        agregarFilas(20);
       }
+    } else {
+      agregarFilas(50);
+    }
 
-      try {
-        loteActual = await window.getOrCreateConteoLote({ clientId: cliente.id, auditorEmail: user.email });
+    ocultarLoading();
+    enfocarPrimerEAN();
 
-        if (!vieneDeBorradorOffline) {
-          const datosNube = await window.getConteoAuditor({ clientId: cliente.id, auditorEmail: user.email });
-          registros = datosNube.map(r => ({
-            id: r.id,
-            paleta: r.bulto,
-            lpn: r.tienda,
-            ean: r.ean,
-            cantidad: r.cantidad
-          }));
-        }
-      } catch (errorRed) {
-        console.warn("Sin conexión a Supabase; trabajando con respaldo local:", errorRed);
-      }
-
-      if (registros && registros.length > 0) {
-        conteoBody.innerHTML = "";
-        registros.forEach((r) => {
-          const tr = agregarFila(r);
-          if (r.dirty === "1" || (!r.id && r.ean)) {
-            tr.dataset.dirty = "1";
-          }
-        });
-        if (registros.length < 50) agregarFilas(50 - registros.length);
-
-        if (vieneDeBorradorOffline) {
-          sincronizarFilasPendientes();
-        }
-      }
-    } catch (error) {
-      console.error("Error cargando conteo:", error);
-    } finally {
-      ocultarLoading();
-      enfocarPrimerEAN();
+    if (nubeOk) {
+      sincronizarPendientes();
     }
   }
-
 async function guardarConteo(finalizar) {
     const items = obtenerItemsTabla();
     if (!items.length) return mostrarModal("Sin registros", "Debe ingresar al menos un EAN.", "error");
@@ -225,8 +249,9 @@ async function guardarConteo(finalizar) {
       }
     });
 
-    tr.appendChild(tdAccion);
+tr.appendChild(tdAccion);
     conteoBody.appendChild(tr);
+    return tr;
   }
 
   function obtenerItemsTabla() {
@@ -666,8 +691,13 @@ function manejarPegadoExcel(event) {
 
   // Re-sincronizar automáticamente si vuelve el Wi-Fi o se desbloquea la tablet
   window.addEventListener("online", sincronizarPendientes);
+  window.addEventListener("pagehide", () => {
+    guardarRespaldoLocal();
+  });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
+    if (document.visibilityState === "hidden") {
+      guardarRespaldoLocal();
+    } else if (document.visibilityState === "visible") {
       sincronizarPendientes();
     }
   });
