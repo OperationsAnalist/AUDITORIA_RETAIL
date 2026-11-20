@@ -50,6 +50,8 @@ const cliente = JSON.parse(clienteRaw);
   // -----------------------------------------
 
   let loteActual = null;
+  let guardandoManual = false;
+  let guardadosActivos = 0;
 
   if (clienteLogo) {
     clienteLogo.src = normalizarLogo(cliente.logo_url);
@@ -101,9 +103,6 @@ const cliente = JSON.parse(clienteRaw);
 conteoBody.addEventListener("keydown", manejarNavegacionEscaner);
   conteoBody.addEventListener("paste", manejarPegadoExcel);
   conteoBody.addEventListener("focusin", seleccionarContenidoCelda);
-  
-let guardandoManual = false;
-  let guardadosActivos = 0;
 
   function actualizarIndicador(texto, color) {
     const el = document.getElementById("indicadorAutoguardado");
@@ -347,8 +346,13 @@ let guardandoManual = false;
   }, true);
 
   window.addEventListener("online", sincronizarPendientes);
+  window.addEventListener("pagehide", () => {
+    guardarRespaldoLocal();
+  });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
+    if (document.visibilityState === "hidden") {
+      guardarRespaldoLocal();
+    } else if (document.visibilityState === "visible") {
       sincronizarPendientes();
     }
   });
@@ -437,11 +441,12 @@ let guardandoManual = false;
       itemsParaCargar.forEach((r) => agregarFila(r));
       if (itemsParaCargar.length < 50) {
         agregarFilas(50 - itemsParaCargar.length);
+      } else {
+        agregarFilas(20);
       }
     } else {
       agregarFilas(50);
     }
-
     ocultarLoading();
     enfocarPrimerEAN();
 
