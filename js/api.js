@@ -664,11 +664,84 @@ window.guardarReporteJS = async function (clientId, items) {
         },
         body: JSON.stringify(chunk)
       });
-      if (!response.ok) {
+if (!response.ok) {
         throw new Error("Error guardando reporte en Nube: " + await response.text());
       }
     }
   };
 
-})(); 
+  window.insertarConteoItemRetornando = async function (payload) {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/conteo_items`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        "Prefer": "return=representation"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const txt = await response.text();
+    if (!response.ok) {
+      throw new Error("Error insertando fila en Conteo: " + txt);
+    }
+
+    const data = txt ? JSON.parse(txt) : [];
+    return data.length > 0 ? data[0] : null;
+  };
+
+  window.insertarConteoItemsLoteRetornando = async function (registros) {
+    if (!registros || !registros.length) return [];
+
+    const creados = [];
+    const chunkSize = 500;
+
+    for (let i = 0; i < registros.length; i += chunkSize) {
+      const chunk = registros.slice(i, i + chunkSize);
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/conteo_items`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          "Prefer": "return=representation"
+        },
+        body: JSON.stringify(chunk)
+      });
+
+      const txt = await response.text();
+      if (!response.ok) {
+        throw new Error("Error insertando lote en Conteo: " + txt);
+      }
+
+      const data = txt ? JSON.parse(txt) : [];
+      creados.push(...data);
+    }
+
+    return creados;
+  };
+
+  window.actualizarConteoItemVerificado = async function (id, payload) {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/conteo_items?id=eq.${id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        "Prefer": "return=representation"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const txt = await response.text();
+    if (!response.ok) {
+      throw new Error("Error actualizando fila en Conteo: " + txt);
+    }
+
+    const data = txt ? JSON.parse(txt) : [];
+    return data.length > 0 ? data[0] : null;
+  };
+
+})();
 
