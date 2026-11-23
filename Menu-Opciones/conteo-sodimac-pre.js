@@ -181,10 +181,12 @@ async function cargarConteoExistente() {
     enfocarPrimerEAN();
 
     if (nubeOk) {
+      guardarRespaldoLocal();
       sincronizarPendientes();
     }
   }
 async function guardarConteo(finalizar) {
+    if (guardandoManual) return;
     const items = obtenerItemsTabla();
     if (!items.length) return mostrarModal("Sin registros", "Debe ingresar al menos un EAN.", "error");
 
@@ -368,11 +370,10 @@ function manejarPegadoExcel(event) {
       const trActual = target.parentElement;
       trActual.dataset.syncPendiente = "true";
       guardarRespaldoLocal();
-      sincronizarFila(trActual);
+      sincronizarFilaConHijas(trActual, target.dataset.field);
       if (target.dataset.field === "ean") moverASiguienteFilaEAN(target);
       return;
     }
-
     // CASO 2: Pegado Múltiple desde Excel (con Tabulaciones y Saltos de Línea)
     const filasPegadas = texto.split(/\r?\n/);
     const filaInicial = target.parentElement;
@@ -644,10 +645,15 @@ function manejarPegadoExcel(event) {
           cantidad: datos.cantidad
         });
         if (creado && creado.id) {
+          // Si el usuario borró la fila con "✕" mientras el POST viajaba, la eliminamos de Supabase
+          if (!tr.isConnected) {
+            await window.eliminarConteoItem(creado.id);
+            guardarRespaldoLocal();
+            return;
+          }
           tr.dataset.id = creado.id;
         }
       }
-
       delete tr.dataset.enVuelo;
       delete tr.dataset.syncPendiente;
       guardarRespaldoLocal();
