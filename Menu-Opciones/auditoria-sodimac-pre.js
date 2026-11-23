@@ -683,8 +683,19 @@ actualizarLoading("Guardando en la nube...");
     }
   }
 
-// Llamar a la tabla base al iniciar (después de cargarEstado)
-  cargarReporteBase();
+// Si venimos de "Guardar Cambios" en Editar Datos (Predistribuido), ejecutar PROCESAR automáticamente
+  const autoProcesarId = sessionStorage.getItem("autoProcesarSodimacPre");
+
+  if (autoProcesarId && String(autoProcesarId) === String(cliente.id)) {
+    sessionStorage.removeItem("autoProcesarSodimacPre");
+    if (btnProcesar && !btnProcesar.disabled) {
+      btnProcesar.click();
+    } else {
+      await cargarReporteBase();
+    }
+  } else {
+    await cargarReporteBase();
+  }
 
 // =================================================================================
   // REEMPLAZO DESDE AQUÍ HASTA EL FINAL DEL ARCHIVO (Línea 541 en adelante aprox.)
