@@ -378,34 +378,50 @@ const m = dictMaestra.get(snLimpio) || {};
         }
       });
 
-      // --- NUEVO: ESCÁNER INTELIGENTE DE INTRUSOS ---
+      // --- ESCÁNER INTELIGENTE DE INTRUSOS, CRUCES INVÁLIDOS Y SOBRANTES REALES ---
       let intrusosDetectados = 0;
+      let crucesInvalidos = 0;
       const validEans = new Set();
       const validLpns = new Set();
-      
+      const validPairs = new Set();
+
+      const esCodigoValido = (v) => v && v !== "AGREGAR EN BD";
+
       reporte.forEach(r => {
-        if(r.ean_13) validEans.add(limpiar(r.ean_13));
-        if(r.inner_code) validEans.add(limpiar(r.inner_code));
-        if(r.ean_14) validEans.add(limpiar(r.ean_14));
-        if(r.sku) validEans.add(limpiar(r.sku));
-        if(r.lpn) validLpns.add(limpiar(r.lpn));
+        const lpnLimpio = limpiar(r.lpn);
+        if (lpnLimpio) validLpns.add(lpnLimpio);
+
+        [r.ean_13, r.inner_code, r.ean_14, r.sku].forEach(cod => {
+          const cLimpio = limpiar(cod);
+          if (esCodigoValido(cLimpio)) {
+            validEans.add(cLimpio);
+            if (lpnLimpio) validPairs.add(`${lpnLimpio}|${cLimpio}`);
+          }
+        });
       });
 
-      // Contamos cuántas líneas ingresadas por el auditor son intrusas (LPN o EAN inválidos)
+      // Evaluamos cada registro real del conteo
       conteoData.forEach(c => {
         const eanLimpio = limpiar(c.ean);
         const lpnLimpio = limpiar(c.tienda);
-        let esIntruso = false;
-        
-        if (eanLimpio && validEans.size > 0 && !validEans.has(eanLimpio)) esIntruso = true;
-        if (lpnLimpio && validLpns.size > 0 && !validLpns.has(lpnLimpio)) esIntruso = true;
-        
-        if(esIntruso) intrusosDetectados++;
+        if (!eanLimpio && !lpnLimpio) return;
+
+        const eanInvalido = eanLimpio !== "" && validEans.size > 0 && !validEans.has(eanLimpio);
+        const lpnInvalido = lpnLimpio !== "" && validLpns.size > 0 && !validLpns.has(lpnLimpio);
+
+        if (eanInvalido || lpnInvalido) {
+          intrusosDetectados++;
+        } else if (eanLimpio !== "" && validPairs.size > 0) {
+          // Ambos existen por separado, pero falta LPN o la combinación LPN + EAN no existe en el Query
+          if (!lpnLimpio || !validPairs.has(`${lpnLimpio}|${eanLimpio}`)) {
+            crucesInvalidos++;
+          }
+        }
       });
 
-      let sobrantesEnReporte = reporte.filter(r => calcularDiferenciaPredistribuido(r) > 0 || r.paleta === "LPN NO COINCIDE").length;
-      let totalAlertas = intrusosDetectados + sobrantesEnReporte;
-
+      // Sobrantes reales únicamente (Real > Plan), sin mezclar "LPN NO COINCIDE"
+      let sobrantesEnReporte = reporte.filter(r => calcularDiferenciaPredistribuido(r) > 0).length;
+      let totalAlertas = intrusosDetectados + crucesInvalidos + sobrantesEnReporte;
       // Guarda en memoria persistente local
       reporteActualEnMemoria = reporte;
       localStorage.setItem(`reportePredi_${cliente.id}`, JSON.stringify(reporte));
@@ -448,18 +464,17 @@ actualizarLoading("Guardando en la nube...");
       // 3. VENTANA EMERGENTE DINÁMICA
       if (totalAlertas > 0) {
         mostrarModal(
-          "Atención: Revisión Sugerida", 
-          `El cruce finalizó, pero se detectaron ${intrusosDetectados} códigos intrusos (LPN o EAN incorrectos) y ${sobrantesEnReporte} sobrantes. Ve a "Editar Datos" para revisarlos.`, 
-          "error" // Muestra alerta Roja/Naranja
+          "Atención: Revisión Sugerida",
+          `El cruce finalizó, pero se detectaron ${intrusosDetectados} códigos intrusos (LPN o EAN inexistentes), ${crucesInvalidos} cruces LPN/EAN que no coinciden y ${sobrantesEnReporte} sobrantes reales. Ve a "Editar Datos" para revisarlos.`,
+          "error"
         );
       } else {
         mostrarModal(
           "Proceso terminado",
-          "El reporte fue cruzado matemáticamente con éxito sin detectar sobrantes ni intrusos.",
-          "success" // Muestra alerta Verde
+          "El reporte fue cruzado matemáticamente con éxito sin detectar sobrantes, cruces inválidos ni intrusos.",
+          "success"
         );
       }
-
     } catch (error) {
       console.error(error);
       ocultarLoading();
