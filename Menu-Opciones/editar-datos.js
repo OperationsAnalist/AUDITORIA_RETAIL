@@ -197,8 +197,40 @@ function agregarFilaConteo(r = {}) {
         `;
     }
     
-    // Si editan el texto, marcamos la fila
-    tr.addEventListener("input", () => tr.classList.add("row-modified"));
+    // Si editan el texto, marcamos la fila y replicamos Paleta/LPN si aplica (SOLO PREDISTRIBUIDO)
+    tr.addEventListener("input", (e) => {
+      tr.classList.add("row-modified");
+
+      if (cliente.tipo_flujo === "PREDISTRIBUIDO" && e.target?.dataset?.field === "ean") {
+        replicarPaletaYLpnPredistribuido(tr);
+      }
+    });
+
+    // Respaldo al salir de la celda EAN y evitar saltos de línea con Enter (SOLO PREDISTRIBUIDO)
+    if (cliente.tipo_flujo === "PREDISTRIBUIDO") {
+      const celdaEan = tr.querySelector('[data-field="ean"]');
+      if (celdaEan) {
+        celdaEan.addEventListener("blur", () => replicarPaletaYLpnPredistribuido(tr));
+      }
+
+      tr.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" || !e.target || e.target.getAttribute("contenteditable") !== "true") return;
+        e.preventDefault();
+
+        const campo = e.target.dataset.field;
+        if (campo === "bulto") {
+          tr.querySelector('[data-field="tienda"]')?.focus();
+        } else if (campo === "tienda") {
+          tr.querySelector('[data-field="ean"]')?.focus();
+        } else if (campo === "ean" || campo === "cantidad") {
+          replicarPaletaYLpnPredistribuido(tr);
+          const siguienteFila = tr.nextElementSibling;
+          if (siguienteFila) {
+            siguienteFila.querySelector('[data-field="ean"]')?.focus();
+          }
+        }
+      });
+    }
     
     // BOTÓN ELIMINAR (Solo borra visualmente. La DB se actualiza al Guardar)
     tr.querySelector(".btn-delete-row").addEventListener("click", () => {
@@ -211,6 +243,49 @@ function agregarFilaConteo(r = {}) {
     bodyConteo.appendChild(tr);
   }
 
+  // --- REPLICAR PALETA Y LPN EN FILAS NUEVAS (SOLO PREDISTRIBUIDO) ---
+  function replicarPaletaYLpnPredistribuido(tr) {
+    if (cliente.tipo_flujo !== "PREDISTRIBUIDO") return;
+    if (!tr || tr.dataset.esNueva !== "true") return;
+
+    const tdBulto = tr.querySelector('[data-field="bulto"]');   // Paleta
+    const tdTienda = tr.querySelector('[data-field="tienda"]'); // LPN
+    const tdEan = tr.querySelector('[data-field="ean"]');       // EAN
+
+    if (!tdBulto || !tdTienda || !tdEan) return;
+
+    const eanActual = tdEan.textContent.trim();
+    if (!eanActual) return; // Solo replica cuando se ingresa un EAN
+
+    let paletaActual = tdBulto.textContent.trim();
+    let lpnActual = tdTienda.textContent.trim();
+
+    if (paletaActual && lpnActual) return; // Si ya tiene ambos valores, no sobreescribe nada
+
+    // Recorremos hacia arriba únicamente entre las filas agregadas
+    let filaAnterior = tr.previousElementSibling;
+    while (filaAnterior && filaAnterior.dataset.esNueva === "true" && (!paletaActual || !lpnActual)) {
+      if (!paletaActual) {
+        const prevPaleta = filaAnterior.querySelector('[data-field="bulto"]')?.textContent.trim() || "";
+        if (prevPaleta) paletaActual = prevPaleta;
+      }
+      if (!lpnActual) {
+        const prevLpn = filaAnterior.querySelector('[data-field="tienda"]')?.textContent.trim() || "";
+        if (prevLpn) lpnActual = prevLpn;
+      }
+      filaAnterior = filaAnterior.previousElementSibling;
+    }
+
+    if (!tdBulto.textContent.trim() && paletaActual) {
+      tdBulto.textContent = paletaActual;
+      tr.classList.add("row-modified");
+    }
+    if (!tdTienda.textContent.trim() && lpnActual) {
+      tdTienda.textContent = lpnActual;
+      tr.classList.add("row-modified");
+    }
+  }
+
   // --- BOTÓN AGREGAR FILA ---
   if (btnAgregarConteo) {
     btnAgregarConteo.addEventListener("click", () => {
@@ -220,14 +295,14 @@ function agregarFilaConteo(r = {}) {
       agregarFilaConteo({}); // Fila vacía
       
       const ultimaFila = bodyConteo.lastElementChild;
-      ultimaFila.classList.add("row-modified"); // Fuerza a que lo reconozca como "nuevo"
+      ultimaFila.dataset.esNueva = "true";   // Identifica las filas agregadas en esta sesión
+      ultimaFila.classList.add("row-modified");
       
       // Foco automático en la primera celda editable
       const primeraCeldaEditable = ultimaFila.querySelector("td[contenteditable='true']");
       if(primeraCeldaEditable) primeraCeldaEditable.focus();
     });
   }
-
 // --- BUSCADORES ---
   buscarQuery.addEventListener("input", (e) => {
     const text = e.target.value.toLowerCase();
@@ -293,7 +368,20 @@ function agregarFilaConteo(r = {}) {
 
   // --- GUARDAR CAMBIOS CONTEO (MAGIA TEMPORAL APLICADA) ---
   btnGuardarConteo.addEventListener("click", async () => {
-    const filasModificadas = Array.from(bodyConteo.querySelectorAll(".row-modified"));
+    const todasModificadas = Array.from(bodyConteo.querySelectorAll(".row-modified"));
+
+    // Filtramos filas nuevas que quedaron completamente vacías (sin EAN ni datos)
+    const filasModificadas = todasModificadas.filter((tr) => {
+      if (tr.dataset.id) return true; // Fila existente modificada
+      if (cliente.tipo_flujo === "PREDISTRIBUIDO") {
+        replicarPaletaYLpnPredistribuido(tr); // Asegura replicación antes de guardar
+      }
+      const tienda = tr.querySelector('[data-field="tienda"]')?.textContent.trim() || "";
+      const bulto = tr.querySelector('[data-field="bulto"]')?.textContent.trim() || "";
+      const ean = tr.querySelector('[data-field="ean"]')?.textContent.trim() || "";
+      const cant = tr.querySelector('[data-field="cantidad"]')?.textContent.trim() || "";
+      return (tienda !== "" || bulto !== "" || ean !== "" || cant !== "");
+    });
     
     if(!filasModificadas.length && !conteoEliminados.length) {
       return mostrarModal("Sin cambios", "No eliminaste ni modificaste ninguna fila.", "error");
@@ -343,7 +431,16 @@ function agregarFilaConteo(r = {}) {
       }
       
       conteoEliminados = []; // Vaciamos la basura
-      localStorage.removeItem(`reportePredi_${cliente.id}`); // Forza recalculo
+      localStorage.removeItem(`reportePredi_${cliente.id}`); // Fuerza recálculo
+
+      // --- SOLO PREDISTRIBUIDO: RETORNAR Y EJECUTAR PROCESAR AUTOMÁTICAMENTE ---
+      if (cliente.tipo_flujo === "PREDISTRIBUIDO") {
+        sessionStorage.setItem("autoProcesarSodimacPre", String(cliente.id));
+        window.location.href = "./auditoria-sodimac-pre.html";
+        return;
+      }
+
+      // FLUJO REGULAR (se mantiene sin cambios)
       mostrarModal("Éxito", "Tus cambios de CONTEO se guardaron en la Nube.", "success");
       await cargarDatos();
     } catch (e) {
@@ -353,7 +450,6 @@ function agregarFilaConteo(r = {}) {
       loadingOverlay.classList.add("oculto");
     }
   });
-
   function normalizarLogo(logoUrl) {
     if (!logoUrl) return "../IMG/logo.png";
     if (logoUrl.startsWith("IMG/")) return "../" + logoUrl;
