@@ -40,7 +40,7 @@ let loteActual = null;
   const STORAGE_KEY = `borrador_conteo_sodimac_${cliente.id}_${user?.email || "anon"}`;
   let guardandoManual = false;
   let guardadosActivos = 0;
-
+  let sincronizandoLote = false;
   // 1. CARGAR LOGO Y TÍTULO
   if (clienteLogo) {
     clienteLogo.src = normalizarLogo(cliente.logo_url);
@@ -86,14 +86,16 @@ async function cargarConteoExistente() {
         const parsed = JSON.parse(borradorRaw);
         if (Array.isArray(parsed)) {
           borradorItems = parsed.map(r => ({
-        id: r.id || null,
-        paleta: r.paleta !== undefined ? r.paleta : (r.bulto || ""),
-        lpn: r.lpn !== undefined ? r.lpn : (r.tienda || ""),
-        ean: r.ean || "",
-        cantidad: r.cantidad ?? null,
-        enVuelo: Boolean(r.enVuelo),
-        syncPendiente: Boolean(r.syncPendiente || r.dirty === "1" || !r.id)
-      }));
+            id: r.id || null,
+            paleta: r.paleta !== undefined ? r.paleta : (r.bulto || ""),
+            lpn: r.lpn !== undefined ? r.lpn : (r.tienda || ""),
+            paletaEfectiva: r.paletaEfectiva !== undefined ? r.paletaEfectiva : (r.paleta !== undefined ? r.paleta : (r.bulto || "")),
+            lpnEfectivo: r.lpnEfectivo !== undefined ? r.lpnEfectivo : (r.lpn !== undefined ? r.lpn : (r.tienda || "")),
+            ean: r.ean || "",
+            cantidad: r.cantidad ?? null,
+            enVuelo: Boolean(r.enVuelo),
+            syncPendiente: Boolean(r.syncPendiente || r.dirty === "1" || !r.id)
+          }));
         }
       } catch (e) {
         console.error("Error leyendo borrador local:", e);
@@ -152,7 +154,7 @@ async function cargarConteoExistente() {
 
       // Solo agregamos filas sin ID si no fueron ya confirmadas en la nube justo antes del F5
       nuevosSinId.forEach((b) => {
-        const k = firma(b.paleta, b.lpn, b.ean, b.cantidad);
+        const k = firma(b.paletaEfectiva, b.lpnEfectivo, b.ean, b.cantidad);
         if (b.enVuelo && (conteoExtraNube.get(k) || 0) > 0) {
           conteoExtraNube.set(k, conteoExtraNube.get(k) - 1);
           return;
@@ -201,6 +203,7 @@ async function guardarConteo(finalizar) {
       if (finalizar) {
         actualizarLoading("Marcando como finalizado...");
         await window.finalizarConteoAuditor({ loteId: loteActual.id });
+        loteActual = null;
       }
 
       if (typeof window.registrarLog === "function") {
@@ -208,8 +211,10 @@ async function guardarConteo(finalizar) {
       }
 
       // Actualizar los nuevos IDs en el DOM para seguir editando fila por fila sin desfase
-      await sincronizarIdsPostGuardado();
-
+      const idsOk = await sincronizarIdsPostGuardado();
+      if (!idsOk) {
+        await cargarConteoExistente();
+      }
       ocultarLoading();
       mostrarModal(finalizar ? "Conteo finalizado" : "Conteo guardado", `Registros guardados: ${resultado.insertados}.`, "success");
     } catch (error) {
@@ -500,12 +505,17 @@ function manejarPegadoExcel(event) {
   function guardarRespaldoLocal() {
     const filas = Array.from(conteoBody.querySelectorAll("tr"));
     const borrador = [];
+    let ultimaPaleta = "";
+    let ultimoLpn = "";
 
     filas.forEach((tr) => {
       const paleta = limpiarTexto(tr.querySelector('[data-field="paleta"]')?.textContent);
       const lpn = limpiarTexto(tr.querySelector('[data-field="lpn"]')?.textContent);
       const ean = limpiarTexto(tr.querySelector('[data-field="ean"]')?.textContent);
       const cantidad = convertirNumero(tr.querySelector('[data-field="cantidad"]')?.textContent);
+
+      if (paleta) ultimaPaleta = paleta;
+      if (lpn) ultimoLpn = lpn;
 
       if (!paleta && !lpn && !ean && cantidad === null) return;
 
@@ -515,6 +525,8 @@ function manejarPegadoExcel(event) {
         syncPendiente: tr.dataset.syncPendiente === "true",
         paleta,
         lpn,
+        paletaEfectiva: paleta || ultimaPaleta,
+        lpnEfectivo: lpn || ultimoLpn,
         ean,
         cantidad
       });
@@ -752,30 +764,37 @@ function manejarPegadoExcel(event) {
       if (tr._debounceTimer) clearTimeout(tr._debounceTimer);
     });
     let intentos = 0;
-    while ((guardadosActivos > 0 || sincronizandoLote) && intentos < 50) {
+    while ((guardadosActivos > 0 || sincronizandoLote) && intentos < 150) {
       await esperar(100);
       intentos++;
+    }
+    if (guardadosActivos > 0 || sincronizandoLote) {
+      throw new Error("Aún hay envíos automáticos en curso por red lenta. Espere unos segundos y vuelva a presionar Guardar.");
     }
   }
 
   async function sincronizarIdsPostGuardado() {
-    try {
-      const datosNube = await window.getConteoAuditor({ clientId: cliente.id, auditorEmail: user.email });
-      const filasConEan = Array.from(conteoBody.querySelectorAll("tr")).filter(
-        tr => limpiarTexto(tr.querySelector('[data-field="ean"]')?.textContent) !== ""
-      );
-      filasConEan.forEach((tr, idx) => {
-        if (datosNube[idx]) {
-          tr.dataset.id = datosNube[idx].id;
-          delete tr.dataset.enVuelo;
-          delete tr.dataset.syncPendiente;
+    for (let intento = 0; intento < 2; intento++) {
+      try {
+        const datosNube = await window.getConteoAuditor({ clientId: cliente.id, auditorEmail: user.email });
+        const filasConEan = Array.from(conteoBody.querySelectorAll("tr")).filter(
+          tr => limpiarTexto(tr.querySelector('[data-field="ean"]')?.textContent) !== ""
+        );
+        if (datosNube.length === filasConEan.length) {
+          filasConEan.forEach((tr, idx) => {
+            tr.dataset.id = datosNube[idx].id;
+            delete tr.dataset.enVuelo;
+            delete tr.dataset.syncPendiente;
+          });
+          return true;
         }
-      });
-    } catch (e) {
-      console.warn("No se pudieron refrescar IDs tras guardar:", e);
+      } catch (e) {
+        console.warn("Reintentando refrescar IDs tras guardar:", e);
+      }
+      await esperar(400);
     }
+    return false;
   }
-
   async function sincronizarFilaConHijas(tr, campo) {
     await sincronizarFila(tr);
     if (campo === "paleta" || campo === "lpn") {
