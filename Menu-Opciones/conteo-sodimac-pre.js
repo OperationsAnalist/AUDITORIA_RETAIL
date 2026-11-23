@@ -86,13 +86,14 @@ async function cargarConteoExistente() {
         const parsed = JSON.parse(borradorRaw);
         if (Array.isArray(parsed)) {
           borradorItems = parsed.map(r => ({
-            id: r.id || null,
-            paleta: r.paleta !== undefined ? r.paleta : (r.bulto || ""),
-            lpn: r.lpn !== undefined ? r.lpn : (r.tienda || ""),
-            ean: r.ean || "",
-            cantidad: r.cantidad ?? null,
-            syncPendiente: Boolean(r.syncPendiente || r.dirty === "1" || !r.id)
-          }));
+        id: r.id || null,
+        paleta: r.paleta !== undefined ? r.paleta : (r.bulto || ""),
+        lpn: r.lpn !== undefined ? r.lpn : (r.tienda || ""),
+        ean: r.ean || "",
+        cantidad: r.cantidad ?? null,
+        enVuelo: Boolean(r.enVuelo),
+        syncPendiente: Boolean(r.syncPendiente || r.dirty === "1" || !r.id)
+      }));
         }
       } catch (e) {
         console.error("Error leyendo borrador local:", e);
@@ -123,6 +124,19 @@ async function cargarConteoExistente() {
         }
       });
 
+      const idsLocales = new Set(borradorItems.filter(b => b.id).map(b => String(b.id)));
+      const firma = (paleta, lpn, ean, cant) =>
+        `${limpiarTexto(paleta)}|${limpiarTexto(lpn)}|${limpiarTexto(ean)}|${cant ?? ""}`;
+
+      // Contamos filas que ya aparecieron en la nube sin tener aún ID guardado en localStorage
+      const conteoExtraNube = new Map();
+      datosNube.forEach((n) => {
+        if (!idsLocales.has(String(n.id))) {
+          const k = firma(n.bulto, n.tienda, n.ean, n.cantidad);
+          conteoExtraNube.set(k, (conteoExtraNube.get(k) || 0) + 1);
+        }
+      });
+
       registros = datosNube.map((n) => {
         const localEdit = pendientesPorId.get(String(n.id));
         if (localEdit) return { ...localEdit, id: n.id, syncPendiente: true };
@@ -136,7 +150,15 @@ async function cargarConteoExistente() {
         };
       });
 
-      nuevosSinId.forEach((b) => registros.push({ ...b, syncPendiente: true }));
+      // Solo agregamos filas sin ID si no fueron ya confirmadas en la nube justo antes del F5
+      nuevosSinId.forEach((b) => {
+        const k = firma(b.paleta, b.lpn, b.ean, b.cantidad);
+        if (b.enVuelo && (conteoExtraNube.get(k) || 0) > 0) {
+          conteoExtraNube.set(k, conteoExtraNube.get(k) - 1);
+          return;
+        }
+        registros.push({ ...b, enVuelo: false, syncPendiente: true });
+      });
     } else {
       registros = borradorItems;
     }
@@ -489,6 +511,7 @@ function manejarPegadoExcel(event) {
 
       borrador.push({
         id: tr.dataset.id || null,
+        enVuelo: tr.dataset.enVuelo === "true",
         syncPendiente: tr.dataset.syncPendiente === "true",
         paleta,
         lpn,
@@ -504,6 +527,22 @@ function manejarPegadoExcel(event) {
     }
   }
 
+  function obtenerFilasHijasAfectadas(trPadre, campo) {
+    const afectadas = [];
+    let siguiente = trPadre.nextElementSibling;
+    while (siguiente) {
+      const valorCampo = limpiarTexto(siguiente.querySelector(`[data-field="${campo}"]`)?.textContent);
+      if (valorCampo) break; // Se encontró otra paleta/LPN explícita
+      const eanHijo = limpiarTexto(siguiente.querySelector('[data-field="ean"]')?.textContent);
+      if (eanHijo) {
+        siguiente.dataset.syncPendiente = "true";
+        afectadas.push(siguiente);
+      }
+      siguiente = siguiente.nextElementSibling;
+    }
+    return afectadas;
+  }
+
   async function sincronizarFila(tr) {
     if (!tr || !tr.isConnected || guardandoManual) return;
 
@@ -513,7 +552,33 @@ function manejarPegadoExcel(event) {
     }
 
     const datos = extraerDatosFila(tr);
-    if (!datos.ean) return;
+
+    // Si el auditor borró el EAN de una fila que ya estaba en Supabase, eliminarla para evitar filas fantasma
+    if (!datos.ean) {
+      if (tr.dataset.id) {
+        tr._guardando = true;
+        tr._pendienteReintento = false;
+        guardadosActivos++;
+        actualizarIndicador("Eliminando línea vacía...", "#ca8a04");
+        try {
+          await window.eliminarConteoItem(tr.dataset.id);
+          delete tr.dataset.id;
+          delete tr.dataset.syncPendiente;
+          delete tr.dataset.enVuelo;
+          guardarRespaldoLocal();
+          actualizarIndicador("Guardado en nube ✓", "#16a34a");
+        } catch (error) {
+          console.error("Error eliminando fila sin EAN:", error);
+          tr.dataset.syncPendiente = "true";
+          guardarRespaldoLocal();
+          actualizarIndicador("Offline (Respaldo local)", "#dc2626");
+        } finally {
+          guardadosActivos--;
+          tr._guardando = false;
+        }
+      }
+      return;
+    }
 
     tr._guardando = true;
     tr._pendienteReintento = false;
@@ -529,13 +594,34 @@ function manejarPegadoExcel(event) {
       }
 
       if (tr.dataset.id) {
-        await window.actualizarConteoItem(tr.dataset.id, {
+        const payloadUpdate = {
           tienda: datos.tienda,
           bulto: datos.bulto,
           ean: datos.ean,
           cantidad: datos.cantidad
-        });
+        };
+
+        // Verificar que la fila aún exista en Supabase (evita pérdida silenciosa si se borró en Editar Datos)
+        if (typeof window.actualizarConteoItemVerificado === "function") {
+          const actualizado = await window.actualizarConteoItemVerificado(tr.dataset.id, payloadUpdate);
+          if (!actualizado) {
+            delete tr.dataset.id;
+            tr.dataset.enVuelo = "true";
+            guardarRespaldoLocal();
+            const recreado = await window.insertarConteoItemRetorno({
+              conteo_lote_id: loteActual.id,
+              client_id: cliente.id,
+              auditor_email: user.email,
+              ...payloadUpdate
+            });
+            if (recreado && recreado.id) tr.dataset.id = recreado.id;
+          }
+        } else {
+          await window.actualizarConteoItem(tr.dataset.id, payloadUpdate);
+        }
       } else {
+        tr.dataset.enVuelo = "true";
+        guardarRespaldoLocal();
         const creado = await window.insertarConteoItemRetorno({
           conteo_lote_id: loteActual.id,
           client_id: cliente.id,
@@ -550,11 +636,14 @@ function manejarPegadoExcel(event) {
         }
       }
 
+      delete tr.dataset.enVuelo;
       delete tr.dataset.syncPendiente;
       guardarRespaldoLocal();
       actualizarIndicador("Guardado en nube ✓", "#16a34a");
     } catch (error) {
       console.error("Error guardando fila en Supabase:", error);
+      // Solo quitamos enVuelo si sabemos que el navegador está sin red
+      if (!navigator.onLine) delete tr.dataset.enVuelo;
       tr.dataset.syncPendiente = "true";
       guardarRespaldoLocal();
       actualizarIndicador("Offline (Respaldo local)", "#dc2626");
@@ -574,13 +663,20 @@ function manejarPegadoExcel(event) {
     const existentes = [];
 
     filas.forEach((tr) => {
+      if (!tr || !tr.isConnected || tr._guardando) return; // Evita doble POST con sincronizarFila
       const datos = extraerDatosFila(tr);
       if (!datos.ean) return;
-      if (tr.dataset.id) existentes.push(tr);
-      else nuevas.push({ tr, datos });
+      if (tr.dataset.id) {
+        existentes.push(tr);
+      } else {
+        tr._guardando = true; // Bloquea la fila antes del POST en bloque
+        tr.dataset.enVuelo = "true";
+        nuevas.push({ tr, datos });
+      }
     });
 
     if (nuevas.length > 0) {
+      guardarRespaldoLocal();
       guardadosActivos++;
       actualizarIndicador("Guardando bloque...", "#ca8a04");
       try {
@@ -608,6 +704,7 @@ function manejarPegadoExcel(event) {
           loteChunk.forEach(({ tr }, idx) => {
             if (insertados && insertados[idx] && insertados[idx].id) {
               tr.dataset.id = insertados[idx].id;
+              delete tr.dataset.enVuelo;
               delete tr.dataset.syncPendiente;
             }
           });
@@ -616,10 +713,14 @@ function manejarPegadoExcel(event) {
         actualizarIndicador("Guardado en nube ✓", "#16a34a");
       } catch (error) {
         console.error("Error guardando pegado en Supabase:", error);
-        nuevas.forEach(({ tr }) => { tr.dataset.syncPendiente = "true"; });
+        nuevas.forEach(({ tr }) => {
+          if (!navigator.onLine) delete tr.dataset.enVuelo;
+          tr.dataset.syncPendiente = "true";
+        });
         guardarRespaldoLocal();
         actualizarIndicador("Offline (Respaldo local)", "#dc2626");
       } finally {
+        nuevas.forEach(({ tr }) => { tr._guardando = false; });
         guardadosActivos--;
       }
     }
@@ -630,13 +731,19 @@ function manejarPegadoExcel(event) {
   }
 
   async function sincronizarPendientes() {
-    if (guardandoManual) return;
-    const filasPendientes = Array.from(conteoBody.querySelectorAll("tr")).filter((tr) => {
-      const ean = limpiarTexto(tr.querySelector('[data-field="ean"]')?.textContent);
-      return ean !== "" && (!tr.dataset.id || tr.dataset.syncPendiente === "true");
-    });
-    if (filasPendientes.length > 0) {
-      await sincronizarMultiplesFilas(filasPendientes);
+    if (guardandoManual || sincronizandoLote) return;
+    sincronizandoLote = true;
+    try {
+      const filasPendientes = Array.from(conteoBody.querySelectorAll("tr")).filter((tr) => {
+        if (tr._guardando) return false;
+        const ean = limpiarTexto(tr.querySelector('[data-field="ean"]')?.textContent);
+        return ean !== "" && (!tr.dataset.id || tr.dataset.syncPendiente === "true");
+      });
+      if (filasPendientes.length > 0) {
+        await sincronizarMultiplesFilas(filasPendientes);
+      }
+    } finally {
+      sincronizandoLote = false;
     }
   }
 
@@ -645,7 +752,7 @@ function manejarPegadoExcel(event) {
       if (tr._debounceTimer) clearTimeout(tr._debounceTimer);
     });
     let intentos = 0;
-    while (guardadosActivos > 0 && intentos < 50) {
+    while ((guardadosActivos > 0 || sincronizandoLote) && intentos < 50) {
       await esperar(100);
       intentos++;
     }
@@ -660,6 +767,7 @@ function manejarPegadoExcel(event) {
       filasConEan.forEach((tr, idx) => {
         if (datosNube[idx]) {
           tr.dataset.id = datosNube[idx].id;
+          delete tr.dataset.enVuelo;
           delete tr.dataset.syncPendiente;
         }
       });
@@ -668,24 +776,37 @@ function manejarPegadoExcel(event) {
     }
   }
 
+  async function sincronizarFilaConHijas(tr, campo) {
+    await sincronizarFila(tr);
+    if (campo === "paleta" || campo === "lpn") {
+      const hijas = obtenerFilasHijasAfectadas(tr, campo);
+      if (hijas.length > 0) {
+        guardarRespaldoLocal();
+        await sincronizarMultiplesFilas(hijas);
+      }
+    }
+  }
+
   // Respaldo instantáneo al digitar + envío a Supabase 400ms después
   conteoBody.addEventListener("input", (e) => {
     if (!e.target.hasAttribute("contenteditable")) return;
     const tr = e.target.parentElement;
+    const campo = e.target.dataset.field;
     tr.dataset.syncPendiente = "true";
     guardarRespaldoLocal();
 
     clearTimeout(tr._debounceTimer);
-    tr._debounceTimer = setTimeout(() => sincronizarFila(tr), 400);
+    tr._debounceTimer = setTimeout(() => sincronizarFilaConHijas(tr, campo), 400);
   });
 
-  // Envío inmediato al salir de la celda (o cuando el escáner presiona Enter)
+  // Envío inmediato al salir de la celda (evitando reenvío innecesario si ya está guardando)
   conteoBody.addEventListener("blur", (e) => {
     if (!e.target || e.target.getAttribute("contenteditable") !== "true") return;
     const tr = e.target.parentElement;
+    const campo = e.target.dataset.field;
     clearTimeout(tr._debounceTimer);
-    if (tr.dataset.syncPendiente === "true") {
-      sincronizarFila(tr);
+    if (tr.dataset.syncPendiente === "true" && !tr._guardando) {
+      sincronizarFilaConHijas(tr, campo);
     }
   }, true);
 
