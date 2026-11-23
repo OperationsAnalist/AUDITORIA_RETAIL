@@ -31,8 +31,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   let dataQuery = [];
   let dataConteo = [];
 let conteoEliminados = []; 
-  let validEansGlobal = new Set(); // Guardará los códigos EAN/SKU permitidos
-  let validLpnsGlobal = new Set(); // ¡NUEVO! Guardará los LPN permitidos
+  let validEansGlobal = new Set();      // Guardará los códigos EAN/SKU permitidos
+  let validLpnsGlobal = new Set();      // Guardará los LPN permitidos
+  let validPairsGlobal = new Set();     // Combinaciones LPN|EAN válidas en el Query/Reporte
+  let sobrantesPairsGlobal = new Set(); // Combinaciones LPN|EAN con sobrante real (Real > Plan)
 
 // --- ADAPTAR CABECERAS SI ES PREDISTRIBUIDO ---
   if (cliente.tipo_flujo === "PREDISTRIBUIDO") {
@@ -91,19 +93,33 @@ let conteoEliminados = [];
       dataQuery = dQ;
       dataConteo = dC;
 
-// Alimentar lista de EANs y LPNs permitidos limpiando ceros a la izquierda
+// Alimentar listas de EANs, LPNs, cruces LPN|EAN válidos y sobrantes reales
       validEansGlobal.clear();
-      validLpnsGlobal.clear(); // ¡NUEVO! Limpiamos memoria de LPNs
+      validLpnsGlobal.clear();
+      validPairsGlobal.clear();
+      sobrantesPairsGlobal.clear();
+
       const limpiar = (str) => String(str || "").replace(/^0+/, "").trim();
-      
+      const esCodigoValido = (v) => v && v !== "AGREGAR EN BD";
+
       if (dR && dR.length > 0) {
         dR.forEach(r => {
-          if(r.ean_13) validEansGlobal.add(limpiar(r.ean_13));
-          if(r.inner_code) validEansGlobal.add(limpiar(r.inner_code));
-          if(r.ean_14) validEansGlobal.add(limpiar(r.ean_14));
-          if(r.sku) validEansGlobal.add(limpiar(r.sku));
-          
-          if(r.columna_b) validLpnsGlobal.add(limpiar(r.columna_b)); // ¡NUEVO! Mapeamos el LPN válido
+          const lpnLimpio = limpiar(r.columna_b);
+          const esSobrante = (Number(r.real) || 0) > (Number(r.plan) || 0);
+
+          if (lpnLimpio) validLpnsGlobal.add(lpnLimpio);
+
+          [r.ean_13, r.inner_code, r.ean_14, r.sku].forEach(cod => {
+            const cLimpio = limpiar(cod);
+            if (esCodigoValido(cLimpio)) {
+              validEansGlobal.add(cLimpio);
+              if (lpnLimpio) {
+                const pairKey = `${lpnLimpio}|${cLimpio}`;
+                validPairsGlobal.add(pairKey);
+                if (esSobrante) sobrantesPairsGlobal.add(pairKey);
+              }
+            }
+          });
         });
       }
 
@@ -163,29 +179,66 @@ function agregarFilaConteo(r = {}) {
     // Si r viene vacío (nueva fila), usamos el auditor actual
     const auditorName = (r.auditor_email || user?.email || '').split('@')[0];
     
-// Lógica para detectar EAN Intruso
+const estiloRojo = "background-color: #fecaca; color: #b91c1c; font-weight: 900;";
     const eanLimpio = String(r.ean || "").replace(/^0+/, "").trim();
-    let alertStyleEan = "";
-    if (validEansGlobal.size > 0 && eanLimpio !== "" && !validEansGlobal.has(eanLimpio)) {
-       alertStyleEan = "background-color: #fecaca; color: #b91c1c; font-weight: 900;";
-    }
-
-    // ¡NUEVO! Lógica para detectar LPN Intruso (La tienda funciona como LPN en Predistribuido)
     const lpnLimpio = String(r.tienda || "").replace(/^0+/, "").trim();
+
+    let alertStyleEan = "";
+    let titleEan = "";
     let alertStyleLpn = "";
-    if (cliente.tipo_flujo === "PREDISTRIBUIDO" && validLpnsGlobal.size > 0 && lpnLimpio !== "" && !validLpnsGlobal.has(lpnLimpio)) {
-       alertStyleLpn = "background-color: #fecaca; color: #b91c1c; font-weight: 900;";
+    let titleLpn = "";
+    let alertStyleCant = "";
+    let titleCant = "";
+
+    // 1. Detectar EAN intruso (no existe en ninguna fila del Query)
+    if (validEansGlobal.size > 0 && eanLimpio !== "" && !validEansGlobal.has(eanLimpio)) {
+      alertStyleEan = estiloRojo;
+      titleEan = "Este código EAN/SKU NO existe en la base Query.";
     }
 
     if (cliente.tipo_flujo === "PREDISTRIBUIDO") {
-        tr.innerHTML = `
-          <td>${auditorName}</td>
-          <td contenteditable="true" data-field="bulto">${r.bulto || ''}</td>
-          <td contenteditable="true" data-field="tienda" style="${alertStyleLpn}" title="${alertStyleLpn ? 'Este LPN NO existe en la base Query.' : ''}">${r.tienda || ''}</td>
-          <td contenteditable="true" data-field="ean" style="${alertStyleEan}" title="${alertStyleEan ? 'Este código EAN/SKU NO existe en la base Query.' : ''}">${r.ean || ''}</td>
-          <td contenteditable="true" data-field="cantidad" class="col-number">${r.cantidad !== null && r.cantidad !== undefined ? r.cantidad : ''}</td>
-          <td style="text-align:center;"><button class="btn-delete-row" style="color:#dc2626; font-weight:bold; background:transparent; border:none; cursor:pointer; font-size:16px;">✕</button></td>
-        `;
+      // 2. Detectar LPN intruso (no existe en ninguna fila del Query)
+      if (validLpnsGlobal.size > 0 && lpnLimpio !== "" && !validLpnsGlobal.has(lpnLimpio)) {
+        alertStyleLpn = estiloRojo;
+        titleLpn = "Este LPN NO existe en la base Query.";
+      }
+
+      // 3. Detectar cruce LPN + EAN inválido (LPN vacío o el EAN no corresponde a ese LPN)
+      if (validPairsGlobal.size > 0 && eanLimpio !== "" && !alertStyleEan && !alertStyleLpn) {
+        const pairKey = `${lpnLimpio}|${eanLimpio}`;
+        if (!lpnLimpio || !validPairsGlobal.has(pairKey)) {
+          alertStyleLpn = estiloRojo;
+          alertStyleEan = estiloRojo;
+          titleLpn = !lpnLimpio
+            ? "Falta ingresar el LPN para este EAN."
+            : "CRUCE INVÁLIDO: Este EAN NO pertenece a este LPN en el Query.";
+          titleEan = titleLpn;
+        }
+      }
+
+      // 4. Detectar sobrante real (Real > Plan en el reporte)
+      if (sobrantesPairsGlobal.size > 0 && lpnLimpio !== "" && eanLimpio !== "") {
+        const pairKey = `${lpnLimpio}|${eanLimpio}`;
+        if (sobrantesPairsGlobal.has(pairKey)) {
+          alertStyleCant = estiloRojo;
+          titleCant = "SOBRANTE: La cantidad contada para este LPN + EAN supera el Plan del Query.";
+        }
+      }
+
+      // Resaltar visualmente toda la fila si tiene cualquier alerta para encontrarla rápido
+      if (alertStyleLpn || alertStyleEan || alertStyleCant) {
+        tr.style.borderLeft = "4px solid #dc2626";
+        tr.style.backgroundColor = "#fff1f2";
+      }
+
+      tr.innerHTML = `
+        <td>${auditorName}</td>
+        <td contenteditable="true" data-field="bulto">${r.bulto || ''}</td>
+        <td contenteditable="true" data-field="tienda" style="${alertStyleLpn}" title="${titleLpn}">${r.tienda || ''}</td>
+        <td contenteditable="true" data-field="ean" style="${alertStyleEan}" title="${titleEan}">${r.ean || ''}</td>
+        <td contenteditable="true" data-field="cantidad" class="col-number" style="${alertStyleCant}" title="${titleCant}">${r.cantidad !== null && r.cantidad !== undefined ? r.cantidad : ''}</td>
+        <td style="text-align:center;"><button class="btn-delete-row" style="color:#dc2626; font-weight:bold; background:transparent; border:none; cursor:pointer; font-size:16px;">✕</button></td>
+      `;
     } else {
         tr.innerHTML = `
           <td>${auditorName}</td>
